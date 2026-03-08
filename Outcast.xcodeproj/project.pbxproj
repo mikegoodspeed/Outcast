@@ -19,6 +19,7 @@
 		8E3FE004EDD2A1ADE39BC6FA /* TreeNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C76D66F4811384E41EAFA0 /* TreeNode.swift */; };
 		A57B6EDC854DBC204750D497 /* VectorMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62ECCC60B1DB4D543AD2822 /* VectorMath.swift */; };
 		AB95285C7BC17CBCAF4F0D00 /* InputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE30C5D131F3C2B5B9D606F1 /* InputControllerTests.swift */; };
+		B7816D71C5F188C2612963A2 /* HouseNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FEDC10555FD80F2CA521E0E /* HouseNode.swift */; };
 		CA356550FA92C18191C15277 /* MovementSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B998464F0C86AF5F03001CB /* MovementSystemTests.swift */; };
 		CB0C02712D81D1B63F8AB145 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 74FF35713D0F22B2A84C915E /* Assets.xcassets */; };
 		CD2AF46426549C57C873B38B /* OutcastUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADF1DB3B75C612802AB5DC6C /* OutcastUITests.swift */; };
@@ -45,6 +46,7 @@
 /* Begin PBXFileReference section */
 		27EB0530FE48DFAEC9F220C4 /* RoomBounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomBounds.swift; sourceTree = "<group>"; };
 		2B998464F0C86AF5F03001CB /* MovementSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementSystemTests.swift; sourceTree = "<group>"; };
+		2FEDC10555FD80F2CA521E0E /* HouseNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseNode.swift; sourceTree = "<group>"; };
 		3E0891F2D71284775946C949 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		59F1F8E5F05AC73BD6494722 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		74FF35713D0F22B2A84C915E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -79,6 +81,7 @@
 			children = (
 				DAFA01FDFD02962F91240207 /* GameConstants.swift */,
 				8A6B562F31BEEEBCABBD023C /* GameScene.swift */,
+				2FEDC10555FD80F2CA521E0E /* HouseNode.swift */,
 				C9509594777923B339C0A1F4 /* InputController.swift */,
 				D3F798749C9B3EC6A6BFF0DD /* MovementSystem.swift */,
 				9FFE0CF08F78EF2B180932D2 /* PlayerNode.swift */,
@@ -269,6 +272,7 @@
 				076789BF1791FE2524BD31FA /* GameConstants.swift in Sources */,
 				5186B7DF68C6B8AF8F6CDF9E /* GameScene.swift in Sources */,
 				150C5B909F9780A2F417BFDD /* GameViewController.swift in Sources */,
+				B7816D71C5F188C2612963A2 /* HouseNode.swift in Sources */,
 				15A7055934C9D2E5B395D394 /* InputController.swift in Sources */,
 				8B44AD94723DC406BBCBBA71 /* MovementSystem.swift in Sources */,
 				7AB20698D66C2CE69726A56F /* PlayerNode.swift in Sources */,

@@ -139,11 +139,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             height: worldRect.height - (barrierInset * 2)
         )
 
-        roomBounds = RoomBounds(rect: playableRect)
+        roomBounds = RoomBounds(
+            rect: playableRect,
+            blockedRects: [GameConstants.spawnHouseRect]
+        )
         worldNode.childNodes.forEach { $0.removeFromParentNode() }
 
         addGround(in: worldRect)
         addFloorDetails(in: playableRect)
+        addSpawnHouse()
         addTreeBands(in: worldRect)
 
         if worldFocusPoint == .zero {
@@ -172,6 +176,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         ground.position = SCNVector3(0, Float(-GameConstants.groundThickness / 2), 0)
         ground.castsShadow = false
         worldNode.addChildNode(ground)
+    }
+
+    private func addSpawnHouse() {
+        let house = HouseNode(
+            width: GameConstants.houseWidth,
+            depth: GameConstants.houseDepth,
+            wallHeight: GameConstants.houseWallHeight
+        )
+        house.position = position3D(for: GameConstants.spawnHouseCenter)
+        worldNode.addChildNode(house)
     }
 
     private func addTreeBands(in worldRect: CGRect) {

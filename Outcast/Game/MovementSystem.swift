@@ -16,6 +16,6 @@ struct MovementSystem {
             y: position.y + (clampedVector.dy * speed * deltaTime)
         )
 
-        return roomBounds.clamped(nextPosition, radius: radius)
+        return roomBounds.resolvedPosition(from: position, to: nextPosition, radius: radius)
     }
 }

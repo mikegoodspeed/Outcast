@@ -14,6 +14,20 @@ enum GameConstants {
     static let backTreeSize: CGFloat = 1.55
     static let treeSpacing: CGFloat = 3.4
     static let treeRowOffset: CGFloat = 3.2
+    static let houseWidth: CGFloat = 6.8
+    static let houseDepth: CGFloat = 5.6
+    static let houseWallHeight: CGFloat = 3.9
+    static let houseDoorY: CGFloat = 4.4
+    static let spawnHouseCenter = CGPoint(
+        x: 0,
+        y: houseDoorY + (houseDepth / 2)
+    )
+    static let spawnHouseRect = CGRect(
+        x: -(houseWidth / 2),
+        y: houseDoorY,
+        width: houseWidth,
+        height: houseDepth
+    )
     static let groundThickness: CGFloat = 0.24
     static let cameraHeight: CGFloat = 10.4
     static let cameraDistance: CGFloat = 6.8
