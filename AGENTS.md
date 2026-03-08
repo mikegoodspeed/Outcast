@@ -8,9 +8,9 @@
 - List connected physical devices: `xcrun devicectl list devices`
 - Boot a simulator: `xcrun simctl boot 'iPhone 17 Pro'`
 - Install the app on the booted simulator: `xcrun simctl install booted DerivedData/Build/Products/Debug-iphonesimulator/Outcast.app`
-- Launch the app on the booted simulator: `xcrun simctl launch booted com.mike.Outcast`
+- Launch the app on the booted simulator: `xcrun simctl launch booted com.mikegoodspeed.Outcast`
 - Install the app on a connected iPhone: `xcrun devicectl device install app --device <udid> DerivedData/Build/Products/Debug-iphoneos/Outcast.app`
-- Launch the app on a connected iPhone: `xcrun devicectl device process launch --device <udid> --terminate-existing com.mike.Outcast`
+- Launch the app on a connected iPhone: `xcrun devicectl device process launch --device <udid> --terminate-existing com.mikegoodspeed.Outcast`
 - Codex Run action command: `make run`
 - Codex Build action command: `make build`
 - Codex Test action command: `make test`

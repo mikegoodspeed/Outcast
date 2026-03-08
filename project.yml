@@ -1,6 +1,6 @@
 name: Outcast
 options:
-  bundleIdPrefix: com.mike
+  bundleIdPrefix: com.mikegoodspeed
   deploymentTarget:
     iOS: "26.0"
   createIntermediateGroups: true
@@ -44,7 +44,7 @@ targets:
         UIViewControllerBasedStatusBarAppearance: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mike.Outcast
+        PRODUCT_BUNDLE_IDENTIFIER: com.mikegoodspeed.Outcast
         PRODUCT_NAME: Outcast
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: 1.0
@@ -62,7 +62,7 @@ targets:
       - target: Outcast
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mike.OutcastTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.mikegoodspeed.OutcastTests
         GENERATE_INFOPLIST_FILE: YES
   OutcastUITests:
     type: bundle.ui-testing
@@ -74,7 +74,7 @@ targets:
       - target: Outcast
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.mike.OutcastUITests
+        PRODUCT_BUNDLE_IDENTIFIER: com.mikegoodspeed.OutcastUITests
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   Outcast:

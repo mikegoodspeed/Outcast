@@ -20,4 +20,4 @@ xcodebuild \
   build
 
 xcrun simctl install booted "$APP_PATH"
-xcrun simctl launch booted com.mike.Outcast
+xcrun simctl launch booted com.mikegoodspeed.Outcast

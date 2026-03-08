@@ -11,4 +11,4 @@ TARGET_DEVICE_ID="$("$DEVICE_RESOLVER")"
 xcrun devicectl device process launch \
   --device "$TARGET_DEVICE_ID" \
   --terminate-existing \
-  com.mike.Outcast
+  com.mikegoodspeed.Outcast
