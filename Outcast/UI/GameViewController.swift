@@ -1,9 +1,9 @@
-import SpriteKit
+import SceneKit
 import UIKit
 
 final class GameViewController: UIViewController {
     private let inputController = InputController()
-    private let gameView = SKView()
+    private let gameView = SCNView()
     private let joystickView = VirtualJoystickView()
     private lazy var gameScene = GameScene(size: view.bounds.size)
 
@@ -23,9 +23,7 @@ final class GameViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if gameScene.size != gameView.bounds.size {
-            gameScene.size = gameView.bounds.size
-        }
+        gameScene.updateViewportSize(gameView.bounds.size)
     }
 
     override var canBecomeFirstResponder: Bool {
@@ -60,7 +58,12 @@ final class GameViewController: UIViewController {
     private func configureGameView() {
         gameView.translatesAutoresizingMaskIntoConstraints = false
         gameView.backgroundColor = .black
-        gameView.ignoresSiblingOrder = true
+        gameView.antialiasingMode = .multisampling4X
+        gameView.preferredFramesPerSecond = 60
+        gameView.rendersContinuously = true
+        gameView.isPlaying = true
+        gameView.scene = gameScene.scene
+        gameView.delegate = gameScene
         gameView.accessibilityIdentifier = "gameView"
         gameView.isAccessibilityElement = true
 
@@ -98,7 +101,6 @@ final class GameViewController: UIViewController {
         gameScene.movementInputProvider = { [weak self] in
             self?.inputController.currentMovementVector() ?? .zero
         }
-        gameView.presentScene(gameScene)
     }
 
     private func handlePresses(_ presses: Set<UIPress>, isPressed: Bool) -> Bool {
@@ -136,4 +138,3 @@ private extension DirectionKey {
         }
     }
 }
-

@@ -16,6 +16,7 @@
 		565F385A97260399A911640F /* RoomBounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27EB0530FE48DFAEC9F220C4 /* RoomBounds.swift */; };
 		7AB20698D66C2CE69726A56F /* PlayerNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FFE0CF08F78EF2B180932D2 /* PlayerNode.swift */; };
 		8B44AD94723DC406BBCBBA71 /* MovementSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F798749C9B3EC6A6BFF0DD /* MovementSystem.swift */; };
+		8E3FE004EDD2A1ADE39BC6FA /* TreeNode.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4C76D66F4811384E41EAFA0 /* TreeNode.swift */; };
 		A57B6EDC854DBC204750D497 /* VectorMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = F62ECCC60B1DB4D543AD2822 /* VectorMath.swift */; };
 		AB95285C7BC17CBCAF4F0D00 /* InputControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE30C5D131F3C2B5B9D606F1 /* InputControllerTests.swift */; };
 		CA356550FA92C18191C15277 /* MovementSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B998464F0C86AF5F03001CB /* MovementSystemTests.swift */; };
@@ -59,6 +60,7 @@
 		D3F798749C9B3EC6A6BFF0DD /* MovementSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MovementSystem.swift; sourceTree = "<group>"; };
 		D61E69905B65C93B99F3DCED /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		DAFA01FDFD02962F91240207 /* GameConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameConstants.swift; sourceTree = "<group>"; };
+		F4C76D66F4811384E41EAFA0 /* TreeNode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreeNode.swift; sourceTree = "<group>"; };
 		F62ECCC60B1DB4D543AD2822 /* VectorMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VectorMath.swift; sourceTree = "<group>"; };
 		FD901BD5F7B2E58CE3D181F5 /* OutcastTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OutcastTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -81,6 +83,7 @@
 				D3F798749C9B3EC6A6BFF0DD /* MovementSystem.swift */,
 				9FFE0CF08F78EF2B180932D2 /* PlayerNode.swift */,
 				27EB0530FE48DFAEC9F220C4 /* RoomBounds.swift */,
+				F4C76D66F4811384E41EAFA0 /* TreeNode.swift */,
 				F62ECCC60B1DB4D543AD2822 /* VectorMath.swift */,
 			);
 			path = Game;
@@ -271,6 +274,7 @@
 				7AB20698D66C2CE69726A56F /* PlayerNode.swift in Sources */,
 				565F385A97260399A911640F /* RoomBounds.swift in Sources */,
 				EA763A486AAD36A831BA6046 /* SceneDelegate.swift in Sources */,
+				8E3FE004EDD2A1ADE39BC6FA /* TreeNode.swift in Sources */,
 				A57B6EDC854DBC204750D497 /* VectorMath.swift in Sources */,
 				480F49F6D693F21041FB217F /* VirtualJoystickView.swift in Sources */,
 			);

@@ -47,5 +47,18 @@ final class MovementSystemTests: XCTestCase {
         XCTAssertEqual(position.x, 20, accuracy: 0.001)
         XCTAssertEqual(position.y, 20, accuracy: 0.001)
     }
-}
 
+    func testMovementClampsAtTopBarrier() {
+        let position = movementSystem.move(
+            from: CGPoint(x: 90, y: 120),
+            inputVector: CGVector(dx: 0, dy: 1),
+            deltaTime: 1.0,
+            speed: 100,
+            radius: 10,
+            within: roomBounds
+        )
+
+        XCTAssertEqual(position.x, 90, accuracy: 0.001)
+        XCTAssertEqual(position.y, 120, accuracy: 0.001)
+    }
+}

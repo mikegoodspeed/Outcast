@@ -1,13 +1,23 @@
 import CoreGraphics
 
 enum GameConstants {
-    static let playerRadius: CGFloat = 18
-    static let playerSpeed: CGFloat = 220
-    static let minimumRoomInset: CGFloat = 36
-    static let roomHorizontalInsetRatio: CGFloat = 0.08
-    static let roomVerticalInsetRatio: CGFloat = 0.12
+    static let playerRadius: CGFloat = 0.48
+    static let walkInputThreshold: CGFloat = 0.7
+    static let walkSpeed: CGFloat = 5.2
+    static let runSpeed: CGFloat = 9.0
+    static let worldWidth: CGFloat = 152
+    static let worldHeight: CGFloat = 128
+    static let roomInteriorMargin: CGFloat = 4.2
+    static let roomCornerRadius: CGFloat = 0.6
+    static let treeBarrierDepth: CGFloat = 14
+    static let frontTreeSize: CGFloat = 1.8
+    static let backTreeSize: CGFloat = 1.55
+    static let treeSpacing: CGFloat = 3.4
+    static let treeRowOffset: CGFloat = 3.2
+    static let groundThickness: CGFloat = 0.24
+    static let cameraHeight: CGFloat = 10.4
+    static let cameraDistance: CGFloat = 6.8
+    static let cameraTilt: CGFloat = -0.66
     static let joystickSize = CGSize(width: 144, height: 144)
     static let joystickMargin: CGFloat = 24
-    static let borderLineWidth: CGFloat = 2
 }
-
