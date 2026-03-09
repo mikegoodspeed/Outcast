@@ -2,11 +2,17 @@ import SceneKit
 import UIKit
 
 final class TreeNode: SCNNode {
-    init(size: CGFloat, isBackgroundRow: Bool, variation: CGFloat) {
-        super.init()
+    let swayAngle: CGFloat
+    let swayDuration: TimeInterval
 
+    init(size: CGFloat, isBackgroundRow: Bool, variation: CGFloat) {
         let sizeScale = 0.88 + (variation * 0.28)
         let treeSize = size * sizeScale
+        swayAngle = 0.055 + max(0, (2.2 - treeSize) * 0.04) + (variation * 0.015)
+        swayDuration = 2.35 + ((1 - min(treeSize / 2.2, 1)) * 0.55) + (variation * 0.45)
+
+        super.init()
+
         let barkTone = 0.32 + (variation * 0.1)
         let foliageTone = 0.28 + (variation * 0.16)
         let trunkHeight = treeSize * (1.45 + (variation * 0.4))
@@ -27,10 +33,14 @@ final class TreeNode: SCNNode {
         opacity = isBackgroundRow ? 0.82 : 1.0
         scale = SCNVector3(1, 1, 1)
 
+        let swayPivot = SCNNode()
+        swayPivot.name = "treeSwayPivot"
+        addChildNode(swayPivot)
+
         let trunkPivot = SCNNode()
         trunkPivot.position = SCNVector3Zero
         trunkPivot.eulerAngles = SCNVector3(Float((variation - 0.5) * 0.08), 0, Float((variation - 0.5) * -0.11))
-        addChildNode(trunkPivot)
+        swayPivot.addChildNode(trunkPivot)
 
         let trunk = SCNNode(geometry: SCNCylinder(radius: trunkRadius, height: trunkHeight))
         trunk.geometry?.firstMaterial = trunkMaterial
@@ -73,7 +83,7 @@ final class TreeNode: SCNNode {
                 Float((0.12 - variation) * treeSize * 0.3)
             )
             branch.eulerAngles.z = Float((variation - 0.5) * 0.5)
-            addChildNode(branch)
+            swayPivot.addChildNode(branch)
         }
 
         let canopyBaseHeight = trunkHeight - (treeSize * 0.18)
@@ -89,9 +99,10 @@ final class TreeNode: SCNNode {
             let foliage = SCNNode(geometry: SCNSphere(radius: treeSize * (0.44 + (variation * 0.05))))
             foliage.geometry?.firstMaterial = foliageMaterial
             foliage.position = SCNVector3(Float(x), Float(y), Float(z))
-            addChildNode(foliage)
+            swayPivot.addChildNode(foliage)
         }
 
+        applyBreeze(to: swayPivot, variation: variation)
         eulerAngles.y = Float((variation - 0.5) * 1.4)
 
         name = "tree"
@@ -109,5 +120,33 @@ final class TreeNode: SCNNode {
         material.roughness.contents = roughness
         material.lightingModel = .physicallyBased
         return material
+    }
+
+    private func applyBreeze(to swayPivot: SCNNode, variation: CGFloat) {
+        let xAmount = swayAngle * (0.72 + (variation * 0.2))
+        let zAmount = swayAngle * (0.92 + (variation * 0.22))
+        let swayForward = SCNAction.rotateBy(
+            x: CGFloat(xAmount),
+            y: 0,
+            z: CGFloat(-zAmount),
+            duration: swayDuration
+        )
+        swayForward.timingMode = .easeInEaseOut
+
+        let swayBackward = SCNAction.rotateBy(
+            x: CGFloat(-xAmount * 1.1),
+            y: 0,
+            z: CGFloat(zAmount * 1.18),
+            duration: swayDuration * 1.08
+        )
+        swayBackward.timingMode = .easeInEaseOut
+
+        let settle = SCNAction.rotateTo(x: 0, y: 0, z: 0, duration: swayDuration * 0.7, usesShortestUnitArc: true)
+        settle.timingMode = .easeInEaseOut
+
+        swayPivot.runAction(
+            .repeatForever(.sequence([swayForward, swayBackward, settle])),
+            forKey: "treeBreeze"
+        )
     }
 }

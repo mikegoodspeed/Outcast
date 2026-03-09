@@ -36,14 +36,17 @@ struct RoomBounds: Equatable {
 
         for blockedRect in blockedRects {
             let collisionRect = blockedRect.insetBy(dx: -radius, dy: -radius)
-            guard overlapsInterior(of: collisionRect, point: resolved) else {
+            let overlapsResolvedPoint = overlapsInterior(of: collisionRect, point: resolved)
+            let crossesWall = crossesHorizontalBoundary(of: collisionRect, from: start, to: proposed)
+
+            guard overlapsResolvedPoint || crossesWall else {
                 continue
             }
 
             if proposed.x > start.x {
-                resolved.x = collisionRect.minX
+                resolved.x = min(resolved.x, collisionRect.minX)
             } else if proposed.x < start.x {
-                resolved.x = collisionRect.maxX
+                resolved.x = max(resolved.x, collisionRect.maxX)
             } else if abs(start.x - collisionRect.minX) < abs(start.x - collisionRect.maxX) {
                 resolved.x = collisionRect.minX
             } else {
@@ -59,14 +62,17 @@ struct RoomBounds: Equatable {
 
         for blockedRect in blockedRects {
             let collisionRect = blockedRect.insetBy(dx: -radius, dy: -radius)
-            guard overlapsInterior(of: collisionRect, point: resolved) else {
+            let overlapsResolvedPoint = overlapsInterior(of: collisionRect, point: resolved)
+            let crossesWall = crossesVerticalBoundary(of: collisionRect, from: start, to: proposed)
+
+            guard overlapsResolvedPoint || crossesWall else {
                 continue
             }
 
             if proposed.y > start.y {
-                resolved.y = collisionRect.minY
+                resolved.y = min(resolved.y, collisionRect.minY)
             } else if proposed.y < start.y {
-                resolved.y = collisionRect.maxY
+                resolved.y = max(resolved.y, collisionRect.maxY)
             } else if abs(start.y - collisionRect.minY) < abs(start.y - collisionRect.maxY) {
                 resolved.y = collisionRect.minY
             } else {
@@ -82,5 +88,37 @@ struct RoomBounds: Equatable {
         point.x < rect.maxX &&
         point.y > rect.minY &&
         point.y < rect.maxY
+    }
+
+    private func crossesHorizontalBoundary(of rect: CGRect, from start: CGPoint, to proposed: CGPoint) -> Bool {
+        guard start.y > rect.minY && start.y < rect.maxY else {
+            return false
+        }
+
+        if proposed.x > start.x {
+            return start.x <= rect.minX && proposed.x > rect.minX
+        }
+
+        if proposed.x < start.x {
+            return start.x >= rect.maxX && proposed.x < rect.maxX
+        }
+
+        return false
+    }
+
+    private func crossesVerticalBoundary(of rect: CGRect, from start: CGPoint, to proposed: CGPoint) -> Bool {
+        guard start.x > rect.minX && start.x < rect.maxX else {
+            return false
+        }
+
+        if proposed.y > start.y {
+            return start.y <= rect.minY && proposed.y > rect.minY
+        }
+
+        if proposed.y < start.y {
+            return start.y >= rect.maxY && proposed.y < rect.maxY
+        }
+
+        return false
     }
 }

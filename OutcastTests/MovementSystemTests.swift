@@ -5,9 +5,10 @@ import XCTest
 final class MovementSystemTests: XCTestCase {
     private let movementSystem = MovementSystem()
     private let roomBounds = RoomBounds(rect: CGRect(x: 10, y: 10, width: 180, height: 120))
+    private let houseLayout = GameConstants.spawnHouseLayout
     private let roomBoundsWithHouse = RoomBounds(
         rect: CGRect(x: -50, y: -50, width: 100, height: 100),
-        blockedRects: [GameConstants.spawnHouseRect]
+        blockedRects: GameConstants.spawnHouseLayout.blockedRects
     )
 
     func testMovementIntegratesOverDeltaTime() {
@@ -66,33 +67,65 @@ final class MovementSystemTests: XCTestCase {
         XCTAssertEqual(position.y, 120, accuracy: 0.001)
     }
 
-    func testMovementStopsAtHouseDoorFace() {
+    func testMovementCanEnterHouseThroughFrontDoor() {
         let radius: CGFloat = 0.48
         let position = movementSystem.move(
-            from: CGPoint(x: 0, y: 2.8),
+            from: CGPoint(x: 0, y: 3.2),
             inputVector: CGVector(dx: 0, dy: 1),
             deltaTime: 1.0,
-            speed: 2.0,
+            speed: 3.0,
             radius: radius,
             within: roomBoundsWithHouse
         )
 
         XCTAssertEqual(position.x, 0, accuracy: 0.001)
-        XCTAssertEqual(position.y, GameConstants.spawnHouseRect.minY - radius, accuracy: 0.001)
+        XCTAssertGreaterThan(position.y, houseLayout.outerRect.minY + radius)
     }
 
-    func testMovementStopsAtHouseSideWall() {
+    func testMovementStopsAtFrontWallOutsideDoorway() {
         let radius: CGFloat = 0.48
         let position = movementSystem.move(
-            from: CGPoint(x: -4.6, y: GameConstants.spawnHouseRect.midY),
-            inputVector: CGVector(dx: 1, dy: 0),
+            from: CGPoint(x: houseLayout.outerRect.minX + 0.7, y: 3.3),
+            inputVector: CGVector(dx: 0, dy: 1),
             deltaTime: 1.0,
-            speed: 2.0,
+            speed: 3.0,
             radius: radius,
             within: roomBoundsWithHouse
         )
 
-        XCTAssertEqual(position.x, GameConstants.spawnHouseRect.minX - radius, accuracy: 0.001)
-        XCTAssertEqual(position.y, GameConstants.spawnHouseRect.midY, accuracy: 0.001)
+        XCTAssertEqual(position.x, houseLayout.outerRect.minX + 0.7, accuracy: 0.001)
+        XCTAssertLessThan(position.y, houseLayout.outerRect.minY)
     }
+
+    func testMovementCannotExitHouseThroughSideWall() {
+        let radius: CGFloat = 0.48
+        let position = movementSystem.move(
+            from: CGPoint(x: houseLayout.outerRect.minX + 0.9, y: houseLayout.outerRect.midY),
+            inputVector: CGVector(dx: -1, dy: 0),
+            deltaTime: 1.0,
+            speed: 3.0,
+            radius: radius,
+            within: roomBoundsWithHouse
+        )
+
+        XCTAssertGreaterThan(position.x, houseLayout.outerRect.minX)
+    }
+
+    func testMovementCannotWalkThroughBed() {
+        let radius: CGFloat = 0.48
+        let bedRect = houseLayout.bedRect
+        let start = CGPoint(x: bedRect.maxX + 1.2, y: bedRect.midY)
+
+        let position = movementSystem.move(
+            from: start,
+            inputVector: CGVector(dx: -1, dy: 0),
+            deltaTime: 1.0,
+            speed: 3.0,
+            radius: radius,
+            within: roomBoundsWithHouse
+        )
+
+        XCTAssertGreaterThanOrEqual(position.x, bedRect.maxX + radius - 0.001)
+    }
+
 }

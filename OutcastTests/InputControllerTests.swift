@@ -33,6 +33,16 @@ final class InputControllerTests: XCTestCase {
         XCTAssertEqual(vector.dy, -0.3, accuracy: 0.001)
     }
 
+    func testJoystickVectorOverUnitLengthIsClamped() {
+        let inputController = InputController()
+
+        inputController.setJoystickVector(CGVector(dx: 3, dy: 4))
+
+        let vector = inputController.currentMovementVector()
+        XCTAssertEqual(vector.dx, 0.6, accuracy: 0.001)
+        XCTAssertEqual(vector.dy, 0.8, accuracy: 0.001)
+    }
+
     func testMostRecentActiveInputSourceWinsAndFallsBack() {
         let inputController = InputController()
 
@@ -47,5 +57,15 @@ final class InputControllerTests: XCTestCase {
         XCTAssertEqual(inputController.currentMovementVector().dx, -1, accuracy: 0.001)
         XCTAssertEqual(inputController.currentMovementVector().dy, 0, accuracy: 0.001)
     }
-}
 
+    func testResetClearsAllActiveInputState() {
+        let inputController = InputController()
+
+        inputController.setKey(.up, isPressed: true)
+        inputController.setJoystickVector(CGVector(dx: 0.3, dy: 0.6))
+
+        inputController.reset()
+
+        XCTAssertEqual(inputController.currentMovementVector(), .zero)
+    }
+}

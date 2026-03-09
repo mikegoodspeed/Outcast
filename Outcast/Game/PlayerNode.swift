@@ -22,9 +22,11 @@ final class PlayerNode: SCNNode {
     private let rightLegPivot = SCNNode()
     private let leftArmPivot = SCNNode()
     private let rightArmPivot = SCNNode()
+    private let standingBaseHeight: Float
     private var movementState: MovementState = .idle
 
     init(radius: CGFloat) {
+        standingBaseHeight = Float(radius * 1.08)
         super.init()
         name = "player"
         buildModel(radius: radius)
@@ -63,6 +65,10 @@ final class PlayerNode: SCNNode {
         case .running:
             applyMovementAnimation(swingAngle: 0.78, duration: 0.24, bodyBob: 0.1)
         }
+    }
+
+    func setGroundElevation(_ elevation: CGFloat) {
+        position.y = Float(elevation)
     }
 
     private func buildModel(radius: CGFloat) {
@@ -316,7 +322,7 @@ final class PlayerNode: SCNNode {
     }
 
     private func resetLimbPose() {
-        rigNode.position = SCNVector3Zero
+        rigNode.position = SCNVector3(0, standingBaseHeight, 0)
         leftLegPivot.eulerAngles = SCNVector3Zero
         rightLegPivot.eulerAngles = SCNVector3Zero
         leftArmPivot.eulerAngles = SCNVector3(0.12, 0, 0)
@@ -332,8 +338,9 @@ final class PlayerNode: SCNNode {
     }
 
     private func bobAction(distance: CGFloat, duration: TimeInterval) -> SCNAction {
-        let up = SCNAction.move(to: SCNVector3(0, Float(distance), 0), duration: duration / 2)
-        let down = SCNAction.move(to: SCNVector3Zero, duration: duration / 2)
+        let basePosition = SCNVector3(0, standingBaseHeight, 0)
+        let up = SCNAction.move(to: SCNVector3(0, standingBaseHeight + Float(distance), 0), duration: duration / 2)
+        let down = SCNAction.move(to: basePosition, duration: duration / 2)
         up.timingMode = SCNActionTimingMode.easeInEaseOut
         down.timingMode = SCNActionTimingMode.easeInEaseOut
         return .repeatForever(.sequence([up, down]))
