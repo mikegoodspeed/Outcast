@@ -42,4 +42,6 @@ enum GameConstants {
     static let cameraTilt: CGFloat = -0.66
     static let joystickSize = CGSize(width: 144, height: 144)
     static let joystickMargin: CGFloat = 24
+    static let actionButtonSize = CGSize(width: 58, height: 58)
+    static let actionButtonOffset = CGPoint(x: 68, y: 88)
 }

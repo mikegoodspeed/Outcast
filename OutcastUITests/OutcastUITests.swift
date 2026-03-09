@@ -11,6 +11,6 @@ final class OutcastUITests: XCTestCase {
 
         XCTAssertTrue(app.otherElements["gameView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.otherElements["virtualJoystick"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["actionButtonX"].waitForExistence(timeout: 5))
     }
 }
-

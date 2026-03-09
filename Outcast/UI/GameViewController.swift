@@ -5,6 +5,7 @@ final class GameViewController: UIViewController {
     private let inputController = InputController()
     private let gameView = SCNView()
     private let joystickView = VirtualJoystickView()
+    private let actionButton = UIButton(type: .custom)
     private lazy var gameScene = GameScene(size: view.bounds.size)
 
     override func viewDidLoad() {
@@ -13,6 +14,7 @@ final class GameViewController: UIViewController {
         view.backgroundColor = .black
         configureGameView()
         configureJoystick()
+        configureActionButton()
         configureScene()
     }
 
@@ -97,10 +99,43 @@ final class GameViewController: UIViewController {
         ])
     }
 
+    private func configureActionButton() {
+        actionButton.translatesAutoresizingMaskIntoConstraints = false
+        actionButton.setTitle("X", for: .normal)
+        actionButton.setTitleColor(.white, for: .normal)
+        actionButton.titleLabel?.font = .systemFont(ofSize: 24, weight: .bold)
+        actionButton.backgroundColor = UIColor(white: 1.0, alpha: 0.14)
+        actionButton.layer.cornerRadius = GameConstants.actionButtonSize.width / 2
+        actionButton.clipsToBounds = true
+        actionButton.layer.borderWidth = 1
+        actionButton.layer.borderColor = UIColor(white: 1.0, alpha: 0.2).cgColor
+        actionButton.accessibilityIdentifier = "actionButtonX"
+        actionButton.addTarget(self, action: #selector(handleActionButtonTap), for: .touchUpInside)
+
+        view.addSubview(actionButton)
+        NSLayoutConstraint.activate([
+            actionButton.widthAnchor.constraint(equalToConstant: GameConstants.actionButtonSize.width),
+            actionButton.heightAnchor.constraint(equalToConstant: GameConstants.actionButtonSize.height),
+            actionButton.centerXAnchor.constraint(
+                equalTo: joystickView.centerXAnchor,
+                constant: GameConstants.actionButtonOffset.x
+            ),
+            actionButton.centerYAnchor.constraint(
+                equalTo: joystickView.centerYAnchor,
+                constant: GameConstants.actionButtonOffset.y
+            )
+        ])
+    }
+
     private func configureScene() {
         gameScene.movementInputProvider = { [weak self] in
             self?.inputController.currentMovementVector() ?? .zero
         }
+    }
+
+    @objc
+    private func handleActionButtonTap() {
+        // Placeholder for future interaction handling.
     }
 
     private func handlePresses(_ presses: Set<UIPress>, isPressed: Bool) -> Bool {
