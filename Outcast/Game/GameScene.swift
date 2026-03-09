@@ -22,12 +22,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var isBedSequenceActive: Bool {
         bedSequence != nil
     }
+    var daylightCycleProgress: CGFloat {
+        CGFloat(daylightElapsed / GameConstants.daylightCycleDuration)
+    }
 
     private let playerNode = PlayerNode(radius: GameConstants.playerRadius)
     private let worldNode = SCNNode()
     private let movementSystem = MovementSystem()
     private let cameraNode = SCNNode()
     private let focusTargetNode = SCNNode()
+    private let ambientLightNode = SCNNode()
+    private let directionalLightNode = SCNNode()
+    private let fillLightNode = SCNNode()
 
     private var spawnHouseNode: HouseNode?
     private var playableRect = CGRect.zero
@@ -35,6 +41,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var worldFocusPoint = CGPoint.zero
     private var roomBounds = RoomBounds(rect: .zero)
     private var lastUpdateTime: TimeInterval?
+    private var daylightElapsed: TimeInterval = 0
+    private var sleepReturnPoint: CGPoint?
+    private var lastFacingVector = CGVector(dx: 0, dy: -1)
     private var viewportSize: CGSize
     private var bedSequence: BedSequenceState?
 
@@ -65,8 +74,30 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             sleepPoint: GameConstants.spawnHouseLayout.bedSleepPoint,
             startTime: nil
         )
+        sleepReturnPoint = worldFocusPoint
         playerNode.setMovementState(.idle)
         return true
+    }
+
+    func wakeFromBed() {
+        guard let sleepReturnPoint else {
+            return
+        }
+
+        bedSequence = nil
+        worldFocusPoint = roomBounds.clamped(sleepReturnPoint, radius: GameConstants.playerRadius)
+        self.sleepReturnPoint = nil
+        isFrontDoorOpen = false
+        spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
+        spawnHouseNode?.setBedBlanketState(coverage: 1, occupant: 0)
+        playerNode.setMovementState(.idle)
+        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
+        playerNode.setFacing(vector: lastFacingVector, animated: false)
+        resetDaylightCycle()
+        refreshRoomBounds()
+        updatePlayerGrounding()
+        updateWorldOffset()
+        updateHousePresentation()
     }
 
     func renderer(_ renderer: any SCNSceneRenderer, updateAtTime currentTime: TimeInterval) {
@@ -82,6 +113,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         let deltaTime = min(max(currentTime - lastUpdateTime, 0), 1.0 / 30.0)
         let movementVector = movementInputProvider().clampedToUnit
+        advanceDaylight(by: deltaTime)
         let intensity = movementVector.magnitude
         let animationState: PlayerNode.MovementState
 
@@ -110,6 +142,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             within: roomBounds
         )
 
+        if movementVector != .zero {
+            lastFacingVector = movementVector.normalized
+        }
         playerNode.setMovementState(animationState)
         playerNode.setFacing(vector: movementVector)
         updatePlayerGrounding()
@@ -149,29 +184,25 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func configureLights() {
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light?.type = .ambient
-        ambient.light?.color = UIColor(red: 0.28, green: 0.34, blue: 0.45, alpha: 1.0)
-        scene.rootNode.addChildNode(ambient)
+        ambientLightNode.light = SCNLight()
+        ambientLightNode.light?.type = .ambient
+        scene.rootNode.addChildNode(ambientLightNode)
 
-        let moonlight = SCNNode()
-        moonlight.light = SCNLight()
-        moonlight.light?.type = .directional
-        moonlight.light?.color = UIColor(red: 0.74, green: 0.83, blue: 0.96, alpha: 1.0)
-        moonlight.light?.castsShadow = true
-        moonlight.light?.shadowRadius = 6
-        moonlight.light?.shadowSampleCount = 24
-        moonlight.light?.shadowMode = .deferred
-        moonlight.eulerAngles = SCNVector3(-0.9, 0.75, 0)
-        scene.rootNode.addChildNode(moonlight)
+        directionalLightNode.light = SCNLight()
+        directionalLightNode.light?.type = .directional
+        directionalLightNode.light?.castsShadow = true
+        directionalLightNode.light?.shadowRadius = 6
+        directionalLightNode.light?.shadowSampleCount = 24
+        directionalLightNode.light?.shadowMode = .deferred
+        directionalLightNode.eulerAngles = SCNVector3(-0.9, 0.75, 0)
+        scene.rootNode.addChildNode(directionalLightNode)
 
-        let fill = SCNNode()
-        fill.light = SCNLight()
-        fill.light?.type = .omni
-        fill.light?.color = UIColor(red: 0.3, green: 0.36, blue: 0.45, alpha: 1.0)
-        fill.position = SCNVector3(0, 7, 5)
-        scene.rootNode.addChildNode(fill)
+        fillLightNode.light = SCNLight()
+        fillLightNode.light?.type = .omni
+        fillLightNode.position = SCNVector3(0, 7, 5)
+        scene.rootNode.addChildNode(fillLightNode)
+
+        resetDaylightCycle()
     }
 
     private func configureWorld() {
@@ -452,6 +483,51 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         focusTargetNode.position = SCNVector3(0, 2.15 + playerNode.position.y, 0)
     }
 
+    private func advanceDaylight(by deltaTime: TimeInterval) {
+        daylightElapsed += deltaTime
+        if daylightElapsed >= GameConstants.daylightCycleDuration {
+            daylightElapsed = daylightElapsed.truncatingRemainder(dividingBy: GameConstants.daylightCycleDuration)
+        }
+        applyDaylight()
+    }
+
+    private func resetDaylightCycle() {
+        daylightElapsed = 0
+        applyDaylight()
+    }
+
+    private func applyDaylight() {
+        let progress = daylightCycleProgress
+        let fadeProgress = progress * progress * (3 - (2 * progress))
+
+        ambientLightNode.light?.color = blendedColor(
+            from: UIColor(red: 0.98, green: 0.99, blue: 1.0, alpha: 1.0),
+            to: UIColor.black,
+            progress: fadeProgress
+        )
+        ambientLightNode.light?.intensity = 1_600 * (1 - fadeProgress)
+
+        directionalLightNode.light?.color = blendedColor(
+            from: UIColor(red: 1.0, green: 0.97, blue: 0.9, alpha: 1.0),
+            to: UIColor.black,
+            progress: fadeProgress
+        )
+        directionalLightNode.light?.intensity = 1_450 * (1 - fadeProgress)
+
+        fillLightNode.light?.color = blendedColor(
+            from: UIColor(red: 0.72, green: 0.84, blue: 1.0, alpha: 1.0),
+            to: UIColor.black,
+            progress: fadeProgress
+        )
+        fillLightNode.light?.intensity = 920 * (1 - fadeProgress)
+
+        scene.background.contents = blendedColor(
+            from: UIColor(red: 0.63, green: 0.84, blue: 1.0, alpha: 1.0),
+            to: UIColor.black,
+            progress: fadeProgress
+        )
+    }
+
     private func updateBedSequence(at currentTime: TimeInterval) -> Bool {
         guard var bedSequence else {
             return false
@@ -592,6 +668,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func vector(from start: CGPoint, to end: CGPoint) -> CGVector {
         CGVector(dx: end.x - start.x, dy: end.y - start.y).normalized
+    }
+
+    private func blendedColor(from start: UIColor, to end: UIColor, progress: CGFloat) -> UIColor {
+        var startRed: CGFloat = 0
+        var startGreen: CGFloat = 0
+        var startBlue: CGFloat = 0
+        var startAlpha: CGFloat = 0
+        var endRed: CGFloat = 0
+        var endGreen: CGFloat = 0
+        var endBlue: CGFloat = 0
+        var endAlpha: CGFloat = 0
+
+        start.getRed(&startRed, green: &startGreen, blue: &startBlue, alpha: &startAlpha)
+        end.getRed(&endRed, green: &endGreen, blue: &endBlue, alpha: &endAlpha)
+
+        return UIColor(
+            red: startRed + ((endRed - startRed) * progress),
+            green: startGreen + ((endGreen - startGreen) * progress),
+            blue: startBlue + ((endBlue - startBlue) * progress),
+            alpha: startAlpha + ((endAlpha - startAlpha) * progress)
+        )
     }
 
     private func material(diffuse: UIColor, roughness: CGFloat) -> SCNMaterial {

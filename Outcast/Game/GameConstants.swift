@@ -51,5 +51,7 @@ enum GameConstants {
     static let interactionPromptHorizontalInset: CGFloat = 20
     static let interactionPromptMinHeight: CGFloat = 78
     static let interactionPromptButtonSize: CGFloat = 42
+    static let daylightCycleDuration: TimeInterval = 15 * 60
     static let sleepFadeDuration: TimeInterval = 0.55
+    static let sleepBlackoutDuration: TimeInterval = 2.0
 }

@@ -385,9 +385,33 @@ final class GameViewController: UIViewController {
 
     private func presentSleepFade() {
         sleepFadeView.isHidden = false
-        UIView.animate(withDuration: GameConstants.sleepFadeDuration) {
-            self.sleepFadeView.alpha = 1
-        }
+        UIView.animate(
+            withDuration: GameConstants.sleepFadeDuration,
+            animations: {
+                self.sleepFadeView.alpha = 1
+            },
+            completion: { _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + GameConstants.sleepBlackoutDuration) {
+                    self.finishSleepTransition()
+                }
+            }
+        )
+    }
+
+    private func finishSleepTransition() {
+        gameScene.wakeFromBed()
+        UIView.animate(
+            withDuration: GameConstants.sleepFadeDuration,
+            animations: {
+                self.sleepFadeView.alpha = 0
+            },
+            completion: { _ in
+                self.sleepFadeView.isHidden = true
+                self.areControlsLocked = false
+                self.refreshControlState()
+                self.becomeFirstResponder()
+            }
+        )
     }
 
     @objc

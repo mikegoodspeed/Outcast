@@ -223,6 +223,44 @@ final class GameSceneTests: XCTestCase {
         XCTAssertGreaterThan(blanket.position.y, Float(0.35))
     }
 
+    func testWakeFromBedRestoresStandingPointAndResetsDaylight() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+        let house = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "house", recursively: true))
+
+        gameScene.movementInputProvider = { .zero }
+        gameScene.renderer(renderer, updateAtTime: 0)
+        for frame in 1...60 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        XCTAssertGreaterThan(gameScene.daylightCycleProgress, 0)
+
+        gameScene.movementInputProvider = { CGVector(dx: 0, dy: 1) }
+        for frame in 61...82 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        gameScene.movementInputProvider = { CGVector(dx: -1, dy: 0) }
+        for frame in 83...88 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        let returnHousePosition = house.worldPosition
+        XCTAssertTrue(gameScene.beginBedSequence())
+        for frame in 89...190 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        gameScene.wakeFromBed()
+
+        XCTAssertEqual(gameScene.daylightCycleProgress, 0, accuracy: 0.001)
+        XCTAssertEqual(house.worldPosition.x, returnHousePosition.x, accuracy: 0.001)
+        XCTAssertEqual(house.worldPosition.z, returnHousePosition.z, accuracy: 0.001)
+        XCTAssertFalse(gameScene.isBedSequenceActive)
+    }
+
     private func allNodes(in rootNode: SCNNode) -> [SCNNode] {
         [rootNode] + rootNode.childNodes.flatMap(allNodes(in:))
     }
