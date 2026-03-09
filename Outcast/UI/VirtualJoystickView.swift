@@ -78,6 +78,10 @@ final class VirtualJoystickView: UIView {
         reset()
     }
 
+    func resetControl() {
+        reset()
+    }
+
     private func updateVector(with touch: UITouch) {
         let location = touch.location(in: self)
         let centerPoint = CGPoint(x: bounds.midX, y: bounds.midY)
@@ -107,4 +111,3 @@ final class VirtualJoystickView: UIView {
         onVectorChanged?(.zero)
     }
 }
-

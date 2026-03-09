@@ -24,4 +24,17 @@ final class HouseLayoutTests: XCTestCase {
         XCTAssertLessThan(layout.bedRect.midX, layout.interiorRect.midX)
         XCTAssertGreaterThan(layout.bedRect.midY, layout.interiorRect.midY)
     }
+
+    func testBedInteractionReachIncludesSpaceNearBedFoot() {
+        let point = CGPoint(x: layout.bedRect.midX, y: layout.bedRect.minY - 0.4)
+
+        XCTAssertTrue(layout.canInteractWithBed(at: point, reach: GameConstants.bedInteractionReach))
+    }
+
+    func testBedInteractionReachExcludesBedAndRoomCenter() {
+        let bedCenter = CGPoint(x: layout.bedRect.midX, y: layout.bedRect.midY)
+
+        XCTAssertFalse(layout.canInteractWithBed(at: bedCenter, reach: GameConstants.bedInteractionReach))
+        XCTAssertFalse(layout.canInteractWithBed(at: layout.center, reach: GameConstants.bedInteractionReach))
+    }
 }

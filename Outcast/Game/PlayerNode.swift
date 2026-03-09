@@ -22,10 +22,12 @@ final class PlayerNode: SCNNode {
     private let rightLegPivot = SCNNode()
     private let leftArmPivot = SCNNode()
     private let rightArmPivot = SCNNode()
+    private let shadowNode: SCNNode
     private let standingBaseHeight: Float
     private var movementState: MovementState = .idle
 
     init(radius: CGFloat) {
+        shadowNode = SCNNode(geometry: SCNCylinder(radius: radius * 0.85, height: 0.02))
         standingBaseHeight = Float(radius * 1.08)
         super.init()
         name = "player"
@@ -33,16 +35,20 @@ final class PlayerNode: SCNNode {
         resetLimbPose()
     }
 
-    func setFacing(vector: CGVector) {
+    func setFacing(vector: CGVector, animated: Bool = true) {
         guard vector != .zero else {
             return
         }
 
         let yaw = atan2(Float(vector.dx), Float(-vector.dy))
-        SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0.12
-        rigNode.eulerAngles.y = yaw
-        SCNTransaction.commit()
+        if animated {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.12
+            rigNode.eulerAngles.y = yaw
+            SCNTransaction.commit()
+        } else {
+            rigNode.eulerAngles.y = yaw
+        }
     }
 
     func setMovementState(_ state: MovementState) {
@@ -69,6 +75,26 @@ final class PlayerNode: SCNNode {
 
     func setGroundElevation(_ elevation: CGFloat) {
         position.y = Float(elevation)
+    }
+
+    func setSleepPose(lieProgress: CGFloat, coverProgress: CGFloat) {
+        let lie = Float(max(0, min(lieProgress, 1)))
+        let cover = CGFloat(max(0, min(coverProgress, 1)))
+
+        rigNode.position = SCNVector3(
+            0,
+            standingBaseHeight + (standingBaseHeight * 0.2 * lie),
+            Float(-0.12) * lie
+        )
+        rigNode.eulerAngles.y *= (1 - lie)
+        rigNode.eulerAngles.x = -(.pi / 2) * lie
+        rigNode.eulerAngles.z = -0.16 * lie
+        leftArmPivot.eulerAngles = SCNVector3(0.48 * lie, 0, -0.24 * lie)
+        rightArmPivot.eulerAngles = SCNVector3(0.44 * lie, 0, 0.2 * lie)
+        leftLegPivot.eulerAngles = SCNVector3(-0.08 * lie, 0, 0.05 * lie)
+        rightLegPivot.eulerAngles = SCNVector3(0.05 * lie, 0, -0.04 * lie)
+        rigNode.opacity = 1 - (cover * 0.9)
+        shadowNode.opacity = 1 - (CGFloat(lie) * 0.92)
     }
 
     private func buildModel(radius: CGFloat) {
@@ -108,14 +134,13 @@ final class PlayerNode: SCNNode {
             roughness: 0.3
         )
 
-        let shadow = SCNNode(geometry: SCNCylinder(radius: radius * 0.85, height: 0.02))
-        shadow.geometry?.firstMaterial = Self.material(
+        shadowNode.geometry?.firstMaterial = Self.material(
             diffuse: UIColor(white: 0.0, alpha: 0.22),
             metalness: 0.0,
             roughness: 1.0
         )
-        shadow.position = SCNVector3(0, 0.01, 0)
-        addChildNode(shadow)
+        shadowNode.position = SCNVector3(0, 0.01, 0)
+        addChildNode(shadowNode)
 
         addChildNode(rigNode)
 
@@ -323,10 +348,14 @@ final class PlayerNode: SCNNode {
 
     private func resetLimbPose() {
         rigNode.position = SCNVector3(0, standingBaseHeight, 0)
+        rigNode.eulerAngles.x = 0
+        rigNode.eulerAngles.z = 0
+        rigNode.opacity = 1
         leftLegPivot.eulerAngles = SCNVector3Zero
         rightLegPivot.eulerAngles = SCNVector3Zero
         leftArmPivot.eulerAngles = SCNVector3(0.12, 0, 0)
         rightArmPivot.eulerAngles = SCNVector3(-0.12, 0, 0)
+        shadowNode.opacity = 1
     }
 
     private func swingAction(forward: CGFloat, backward: CGFloat, duration: TimeInterval) -> SCNAction {

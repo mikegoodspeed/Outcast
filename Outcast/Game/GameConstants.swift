@@ -1,3 +1,4 @@
+import Foundation
 import CoreGraphics
 
 enum GameConstants {
@@ -21,6 +22,7 @@ enum GameConstants {
     static let houseExteriorWallThickness: CGFloat = 0.34
     static let houseFrontDoorWidth: CGFloat = 2.1
     static let doorInteractionReach: CGFloat = 0.9
+    static let bedInteractionReach: CGFloat = 0.95
     static let spawnHouseCenter = CGPoint(
         x: 0,
         y: houseDoorY + (houseDepth / 2)
@@ -44,4 +46,10 @@ enum GameConstants {
     static let joystickMargin: CGFloat = 24
     static let actionButtonSize = CGSize(width: 58, height: 58)
     static let actionButtonOffset = CGPoint(x: 68, y: 88)
+    static let interactionPromptCornerRadius: CGFloat = 18
+    static let interactionPromptBottomInset: CGFloat = 28
+    static let interactionPromptHorizontalInset: CGFloat = 20
+    static let interactionPromptMinHeight: CGFloat = 78
+    static let interactionPromptButtonSize: CGFloat = 42
+    static let sleepFadeDuration: TimeInterval = 0.55
 }

@@ -94,6 +94,10 @@ struct HouseLayout: Equatable {
         interiorRect.contains(point)
     }
 
+    func canInteractWithBed(at point: CGPoint, reach: CGFloat) -> Bool {
+        bedInteractionRect(reach: reach).contains(point) && !bedRect.contains(point)
+    }
+
     var bedRect: CGRect {
         let bedWidth = interiorRect.width * 0.28
         let bedLength = interiorRect.height * 0.4
@@ -104,6 +108,24 @@ struct HouseLayout: Equatable {
             y: interiorRect.maxY - cornerInset - bedLength,
             width: bedWidth,
             height: bedLength
+        )
+    }
+
+    func bedInteractionRect(reach: CGFloat) -> CGRect {
+        bedRect.insetBy(dx: -reach, dy: -reach)
+    }
+
+    func bedApproachPoint(playerRadius: CGFloat) -> CGPoint {
+        CGPoint(
+            x: bedRect.maxX + playerRadius + 0.22,
+            y: bedRect.minY + (bedRect.height * 0.4)
+        )
+    }
+
+    var bedSleepPoint: CGPoint {
+        CGPoint(
+            x: bedRect.midX,
+            y: bedRect.midY + (bedRect.height * 0.22)
         )
     }
 }

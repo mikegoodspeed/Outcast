@@ -6,7 +6,14 @@ final class GameViewController: UIViewController {
     private let gameView = SCNView()
     private let joystickView = VirtualJoystickView()
     private let actionButton = UIButton(type: .custom)
+    private let bedPromptView = UIView()
+    private let bedPromptLabel = UILabel()
+    private let bedPromptConfirmButton = UIButton(type: .system)
+    private let bedPromptCancelButton = UIButton(type: .system)
+    private let sleepFadeView = UIView()
     private lazy var gameScene = GameScene(size: view.bounds.size)
+    private var isBedPromptVisible = false
+    private var areControlsLocked = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -15,6 +22,8 @@ final class GameViewController: UIViewController {
         configureGameView()
         configureJoystick()
         configureActionButton()
+        configureBedPrompt()
+        configureSleepFadeView()
         configureScene()
     }
 
@@ -129,23 +138,51 @@ final class GameViewController: UIViewController {
 
     private func configureScene() {
         gameScene.movementInputProvider = { [weak self] in
-            self?.inputController.currentMovementVector() ?? .zero
+            guard let self, !self.isBedPromptVisible, !self.areControlsLocked else {
+                return .zero
+            }
+            return self.inputController.currentMovementVector()
+        }
+        gameScene.onBedSequenceFinished = { [weak self] in
+            DispatchQueue.main.async {
+                self?.presentSleepFade()
+            }
         }
     }
 
     @objc
     private func handleActionButtonTap() {
-        // Placeholder for future interaction handling.
+        handleInteractionAction(.togglePrompt)
     }
 
     private func handlePresses(_ presses: Set<UIPress>, isPressed: Bool) -> Bool {
         var handled = false
 
         for press in presses {
-            guard
-                let key = press.key,
-                let directionKey = DirectionKey(keyCode: key.keyCode)
-            else {
+            guard let key = press.key else {
+                continue
+            }
+
+            if areControlsLocked {
+                handled = true
+                continue
+            }
+
+            if
+                isPressed,
+                let interactionAction = InteractionKeyAction(keyCode: key.keyCode)
+            {
+                handleInteractionAction(interactionAction)
+                handled = true
+                continue
+            }
+
+            guard let directionKey = DirectionKey(keyCode: key.keyCode) else {
+                continue
+            }
+
+            if isBedPromptVisible {
+                handled = true
                 continue
             }
 
@@ -154,6 +191,213 @@ final class GameViewController: UIViewController {
         }
 
         return handled
+    }
+
+    private func configureSleepFadeView() {
+        sleepFadeView.translatesAutoresizingMaskIntoConstraints = false
+        sleepFadeView.backgroundColor = .black
+        sleepFadeView.alpha = 0
+        sleepFadeView.isHidden = true
+        sleepFadeView.accessibilityIdentifier = "sleepFadeView"
+
+        view.addSubview(sleepFadeView)
+        NSLayoutConstraint.activate([
+            sleepFadeView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            sleepFadeView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            sleepFadeView.topAnchor.constraint(equalTo: view.topAnchor),
+            sleepFadeView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
+    private func configureBedPrompt() {
+        bedPromptView.translatesAutoresizingMaskIntoConstraints = false
+        bedPromptView.backgroundColor = UIColor(white: 0.18, alpha: 0.96)
+        bedPromptView.layer.cornerRadius = GameConstants.interactionPromptCornerRadius
+        bedPromptView.layer.borderWidth = 1
+        bedPromptView.layer.borderColor = UIColor(white: 1.0, alpha: 0.08).cgColor
+        bedPromptView.alpha = 0
+        bedPromptView.isHidden = true
+        bedPromptView.accessibilityIdentifier = "bedPrompt"
+
+        bedPromptLabel.translatesAutoresizingMaskIntoConstraints = false
+        bedPromptLabel.text = "Do you want to go to bed?"
+        bedPromptLabel.textColor = .white
+        bedPromptLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+        bedPromptLabel.textAlignment = .center
+        bedPromptLabel.numberOfLines = 2
+        bedPromptLabel.accessibilityIdentifier = "bedPromptText"
+
+        configurePromptButton(
+            bedPromptConfirmButton,
+            symbolName: "checkmark",
+            accessibilityIdentifier: "bedPromptConfirmButton",
+            action: #selector(handleBedPromptConfirmButtonTap)
+        )
+        configurePromptButton(
+            bedPromptCancelButton,
+            symbolName: "xmark",
+            accessibilityIdentifier: "bedPromptCancelButton",
+            action: #selector(handleBedPromptCancelButtonTap)
+        )
+
+        let contentStack = UIStackView(arrangedSubviews: [
+            bedPromptConfirmButton,
+            bedPromptLabel,
+            bedPromptCancelButton
+        ])
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .horizontal
+        contentStack.alignment = .center
+        contentStack.spacing = 16
+
+        view.addSubview(bedPromptView)
+        bedPromptView.addSubview(contentStack)
+
+        NSLayoutConstraint.activate([
+            bedPromptView.leadingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.leadingAnchor,
+                constant: GameConstants.interactionPromptHorizontalInset
+            ),
+            bedPromptView.trailingAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.trailingAnchor,
+                constant: -GameConstants.interactionPromptHorizontalInset
+            ),
+            bedPromptView.bottomAnchor.constraint(
+                equalTo: view.safeAreaLayoutGuide.bottomAnchor,
+                constant: -GameConstants.interactionPromptBottomInset
+            ),
+            bedPromptView.heightAnchor.constraint(
+                greaterThanOrEqualToConstant: GameConstants.interactionPromptMinHeight
+            ),
+
+            contentStack.leadingAnchor.constraint(equalTo: bedPromptView.leadingAnchor, constant: 18),
+            contentStack.trailingAnchor.constraint(equalTo: bedPromptView.trailingAnchor, constant: -18),
+            contentStack.topAnchor.constraint(equalTo: bedPromptView.topAnchor, constant: 16),
+            contentStack.bottomAnchor.constraint(equalTo: bedPromptView.bottomAnchor, constant: -16),
+
+            bedPromptConfirmButton.widthAnchor.constraint(
+                equalToConstant: GameConstants.interactionPromptButtonSize
+            ),
+            bedPromptConfirmButton.heightAnchor.constraint(
+                equalToConstant: GameConstants.interactionPromptButtonSize
+            ),
+            bedPromptCancelButton.widthAnchor.constraint(
+                equalToConstant: GameConstants.interactionPromptButtonSize
+            ),
+            bedPromptCancelButton.heightAnchor.constraint(
+                equalToConstant: GameConstants.interactionPromptButtonSize
+            )
+        ])
+    }
+
+    private func configurePromptButton(
+        _ button: UIButton,
+        symbolName: String,
+        accessibilityIdentifier: String,
+        action: Selector
+    ) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.tintColor = .white
+        button.backgroundColor = UIColor(white: 1.0, alpha: 0.1)
+        button.layer.cornerRadius = GameConstants.interactionPromptButtonSize / 2
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor(white: 1.0, alpha: 0.18).cgColor
+        button.setPreferredSymbolConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 18, weight: .bold),
+            forImageIn: .normal
+        )
+        button.setImage(UIImage(systemName: symbolName), for: .normal)
+        button.accessibilityIdentifier = accessibilityIdentifier
+        button.addTarget(self, action: action, for: .touchUpInside)
+    }
+
+    private func handleInteractionAction(_ action: InteractionKeyAction) {
+        guard !areControlsLocked else {
+            return
+        }
+
+        switch action {
+        case .togglePrompt:
+            guard gameScene.isPlayerNearBedForInteraction || isBedPromptVisible else {
+                return
+            }
+            setBedPromptVisible(!isBedPromptVisible)
+        case .confirmPrompt:
+            guard isBedPromptVisible else {
+                return
+            }
+            handleBedPromptConfirmation()
+        case .cancelPrompt:
+            guard isBedPromptVisible else {
+                return
+            }
+            setBedPromptVisible(false)
+        }
+    }
+
+    private func setBedPromptVisible(_ isVisible: Bool) {
+        guard isBedPromptVisible != isVisible else {
+            return
+        }
+
+        isBedPromptVisible = isVisible
+        inputController.reset()
+        joystickView.resetControl()
+        refreshControlState()
+
+        if isVisible {
+            bedPromptView.isHidden = false
+            bedPromptView.transform = CGAffineTransform(translationX: 0, y: 20)
+            UIView.animate(withDuration: 0.18) {
+                self.bedPromptView.alpha = 1
+                self.bedPromptView.transform = .identity
+            }
+            return
+        }
+
+        UIView.animate(
+            withDuration: 0.18,
+            animations: {
+                self.bedPromptView.alpha = 0
+                self.bedPromptView.transform = CGAffineTransform(translationX: 0, y: 16)
+            },
+            completion: { _ in
+                self.bedPromptView.isHidden = true
+                self.bedPromptView.transform = .identity
+            }
+        )
+    }
+
+    private func handleBedPromptConfirmation() {
+        setBedPromptVisible(false)
+        guard gameScene.beginBedSequence() else {
+            return
+        }
+        areControlsLocked = true
+        refreshControlState()
+    }
+
+    private func refreshControlState() {
+        joystickView.isUserInteractionEnabled = !isBedPromptVisible && !areControlsLocked
+        actionButton.isHidden = areControlsLocked
+        actionButton.alpha = isBedPromptVisible ? 0.45 : 1
+    }
+
+    private func presentSleepFade() {
+        sleepFadeView.isHidden = false
+        UIView.animate(withDuration: GameConstants.sleepFadeDuration) {
+            self.sleepFadeView.alpha = 1
+        }
+    }
+
+    @objc
+    private func handleBedPromptConfirmButtonTap() {
+        handleBedPromptConfirmation()
+    }
+
+    @objc
+    private func handleBedPromptCancelButtonTap() {
+        setBedPromptVisible(false)
     }
 }
 
@@ -168,6 +412,27 @@ private extension DirectionKey {
             self = .left
         case .keyboardRightArrow, .keyboardD:
             self = .right
+        default:
+            return nil
+        }
+    }
+}
+
+private enum InteractionKeyAction {
+    case togglePrompt
+    case confirmPrompt
+    case cancelPrompt
+}
+
+private extension InteractionKeyAction {
+    init?(keyCode: UIKeyboardHIDUsage) {
+        switch keyCode {
+        case .keyboardX:
+            self = .togglePrompt
+        case .keyboardReturnOrEnter:
+            self = .confirmPrompt
+        case .keyboardEscape:
+            self = .cancelPrompt
         default:
             return nil
         }

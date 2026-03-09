@@ -11,8 +11,15 @@ final class HouseNode: SCNNode {
     private let wallHeight: CGFloat
     private let roofNode = SCNNode()
     private let frontDoorPivot = SCNNode()
+    private let bedBlanketNode = SCNNode()
     private var frontDoorIsOpen = false
     private var frontDoorSwingDirection: DoorSwingDirection = .outward
+    private var bedBlanketCoveredZ: CGFloat = 0
+    private var bedBlanketPulledDownZ: CGFloat = 0
+    private var bedBlanketCoveredLength: CGFloat = 0
+    private var bedBlanketPulledDownLength: CGFloat = 0
+    private var bedBlanketBaseHeight: CGFloat = 0
+    private var bedBlanketBaseY: CGFloat = 0
 
     init(layout: HouseLayout, wallHeight: CGFloat) {
         self.layout = layout
@@ -46,6 +53,23 @@ final class HouseNode: SCNNode {
         animateDoor(frontDoorPivot, to: isOpen ? openAngle : 0)
     }
 
+    func setBedBlanketState(coverage: CGFloat, occupant: CGFloat) {
+        guard let blanket = bedBlanketNode.geometry as? SCNBox else {
+            return
+        }
+
+        let clampedCoverage = max(0, min(coverage, 1))
+        let clampedOccupant = max(0, min(occupant, 1))
+        blanket.length = bedBlanketPulledDownLength + ((bedBlanketCoveredLength - bedBlanketPulledDownLength) * clampedCoverage)
+        blanket.height = bedBlanketBaseHeight + (wallHeight * 0.05 * clampedOccupant)
+        bedBlanketNode.position = SCNVector3(
+            0,
+            Float(bedBlanketBaseY + (wallHeight * 0.03 * clampedOccupant)),
+            Float(bedBlanketPulledDownZ + ((bedBlanketCoveredZ - bedBlanketPulledDownZ) * clampedCoverage))
+        )
+        bedBlanketNode.eulerAngles.x = Float(-0.08 * clampedOccupant)
+    }
+
     private func buildModel() {
         let foundationHeight = wallHeight * 0.12
         let floorHeight = wallHeight * 0.06
@@ -76,6 +100,10 @@ final class HouseNode: SCNNode {
         let beddingMaterial = Self.material(
             diffuse: UIColor(red: 0.29, green: 0.47, blue: 0.84, alpha: 1.0),
             roughness: 0.72
+        )
+        let blanketMaterial = Self.material(
+            diffuse: UIColor(red: 0.22, green: 0.38, blue: 0.73, alpha: 1.0),
+            roughness: 0.8
         )
         let pillowMaterial = Self.material(
             diffuse: UIColor(white: 0.97, alpha: 1.0),
@@ -121,6 +149,7 @@ final class HouseNode: SCNNode {
             floorElevation: foundationHeight + floorHeight,
             frameMaterial: trimMaterial,
             beddingMaterial: beddingMaterial,
+            blanketMaterial: blanketMaterial,
             pillowMaterial: pillowMaterial
         )
 
@@ -315,6 +344,7 @@ final class HouseNode: SCNNode {
         floorElevation: CGFloat,
         frameMaterial: SCNMaterial,
         beddingMaterial: SCNMaterial,
+        blanketMaterial: SCNMaterial,
         pillowMaterial: SCNMaterial
     ) {
         let bed = SCNNode()
@@ -368,6 +398,23 @@ final class HouseNode: SCNNode {
             Float(-(bedLength * 0.28))
         )
         bed.addChildNode(pillow)
+
+        bedBlanketCoveredLength = bedLength * 0.66
+        bedBlanketPulledDownLength = bedLength * 0.42
+        bedBlanketCoveredZ = bedLength * 0.14
+        bedBlanketPulledDownZ = bedLength * 0.48
+        bedBlanketBaseHeight = mattressHeight * 0.24
+        bedBlanketBaseY = frameHeight + mattressHeight + (bedBlanketBaseHeight / 2)
+        bedBlanketNode.geometry = SCNBox(
+            width: bedWidth * 0.88,
+            height: bedBlanketBaseHeight,
+            length: bedBlanketCoveredLength,
+            chamferRadius: bedWidth * 0.07
+        )
+        bedBlanketNode.geometry?.firstMaterial = blanketMaterial
+        bedBlanketNode.name = "houseBedBlanket"
+        bed.addChildNode(bedBlanketNode)
+        setBedBlanketState(coverage: 1, occupant: 0)
 
         let headboard = SCNNode(
             geometry: SCNBox(

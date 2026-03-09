@@ -3,8 +3,25 @@ import SceneKit
 import UIKit
 
 final class GameScene: NSObject, SCNSceneRendererDelegate {
+    private struct BedSequenceState {
+        let startPoint: CGPoint
+        let approachPoint: CGPoint
+        let sleepPoint: CGPoint
+        var startTime: TimeInterval?
+    }
+
     var movementInputProvider: () -> CGVector = { .zero }
+    var onBedSequenceFinished: (() -> Void)?
     let scene = SCNScene()
+    var isPlayerNearBedForInteraction: Bool {
+        GameConstants.spawnHouseLayout.canInteractWithBed(
+            at: worldFocusPoint,
+            reach: GameConstants.bedInteractionReach
+        )
+    }
+    var isBedSequenceActive: Bool {
+        bedSequence != nil
+    }
 
     private let playerNode = PlayerNode(radius: GameConstants.playerRadius)
     private let worldNode = SCNNode()
@@ -19,6 +36,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var roomBounds = RoomBounds(rect: .zero)
     private var lastUpdateTime: TimeInterval?
     private var viewportSize: CGSize
+    private var bedSequence: BedSequenceState?
 
     init(size: CGSize) {
         self.viewportSize = size
@@ -35,8 +53,28 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         viewportSize = size
     }
 
+    @discardableResult
+    func beginBedSequence() -> Bool {
+        guard !isBedSequenceActive, isPlayerNearBedForInteraction else {
+            return false
+        }
+
+        bedSequence = BedSequenceState(
+            startPoint: worldFocusPoint,
+            approachPoint: GameConstants.spawnHouseLayout.bedApproachPoint(playerRadius: GameConstants.playerRadius),
+            sleepPoint: GameConstants.spawnHouseLayout.bedSleepPoint,
+            startTime: nil
+        )
+        playerNode.setMovementState(.idle)
+        return true
+    }
+
     func renderer(_ renderer: any SCNSceneRenderer, updateAtTime currentTime: TimeInterval) {
         defer { lastUpdateTime = currentTime }
+
+        if updateBedSequence(at: currentTime) {
+            return
+        }
 
         guard let lastUpdateTime else {
             return
@@ -166,6 +204,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         updatePlayerGrounding()
         updateWorldOffset()
         updateHousePresentation()
+        spawnHouseNode?.setBedBlanketState(coverage: 1, occupant: 0)
+        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
     }
 
     private func addGround(in worldRect: CGRect) {
@@ -412,6 +452,51 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         focusTargetNode.position = SCNVector3(0, 2.15 + playerNode.position.y, 0)
     }
 
+    private func updateBedSequence(at currentTime: TimeInterval) -> Bool {
+        guard var bedSequence else {
+            return false
+        }
+
+        if bedSequence.startTime == nil {
+            bedSequence.startTime = currentTime
+        }
+
+        let elapsed = currentTime - (bedSequence.startTime ?? currentTime)
+        let approachProgress = smoothstep(elapsed, start: 0, end: 0.55)
+        let climbProgress = smoothstep(elapsed, start: 0.78, end: 1.82)
+        let blanketDownProgress = smoothstep(elapsed, start: 0.08, end: 0.8)
+        let coverProgress = smoothstep(elapsed, start: 1.84, end: 2.68)
+        let lieProgress = smoothstep(elapsed, start: 1.02, end: 2.06)
+
+        let pathStart = interpolatedPoint(from: bedSequence.startPoint, to: bedSequence.approachPoint, progress: approachProgress)
+        worldFocusPoint = interpolatedPoint(from: pathStart, to: bedSequence.sleepPoint, progress: climbProgress)
+
+        if lieProgress < 0.75 {
+            let facingTarget = climbProgress < 0.3 ? bedSequence.approachPoint : bedSequence.sleepPoint
+            playerNode.setFacing(vector: vector(from: worldFocusPoint, to: facingTarget), animated: false)
+        }
+
+        let blanketCoverage: CGFloat = elapsed < 1.84
+            ? (1 - blanketDownProgress)
+            : coverProgress
+
+        spawnHouseNode?.setBedBlanketState(coverage: blanketCoverage, occupant: lieProgress)
+        playerNode.setMovementState(.idle)
+        playerNode.setSleepPose(lieProgress: lieProgress, coverProgress: coverProgress)
+        updatePlayerGrounding()
+        updateWorldOffset()
+        updateHousePresentation()
+
+        if elapsed >= 3.02 {
+            self.bedSequence = nil
+            onBedSequenceFinished?()
+        } else {
+            self.bedSequence = bedSequence
+        }
+
+        return true
+    }
+
     private func updateHousePresentation() {
         spawnHouseNode?.setRoofHidden(GameConstants.spawnHouseLayout.containsInterior(worldFocusPoint))
     }
@@ -486,6 +571,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func variation(for index: Int, salt: Int) -> CGFloat {
         let value = sin(Double((index + 1) * 37 + (salt * 19))) * 43758.5453
         return CGFloat(value - floor(value))
+    }
+
+    private func smoothstep(_ value: TimeInterval, start: TimeInterval, end: TimeInterval) -> CGFloat {
+        guard end > start else {
+            return value >= end ? 1 : 0
+        }
+
+        let raw = max(0, min((value - start) / (end - start), 1))
+        let clamped = CGFloat(raw)
+        return clamped * clamped * (3 - (2 * clamped))
+    }
+
+    private func interpolatedPoint(from start: CGPoint, to end: CGPoint, progress: CGFloat) -> CGPoint {
+        CGPoint(
+            x: start.x + ((end.x - start.x) * progress),
+            y: start.y + ((end.y - start.y) * progress)
+        )
+    }
+
+    private func vector(from start: CGPoint, to end: CGPoint) -> CGVector {
+        CGVector(dx: end.x - start.x, dy: end.y - start.y).normalized
     }
 
     private func material(diffuse: UIColor, roughness: CGFloat) -> SCNMaterial {

@@ -154,6 +154,75 @@ final class GameSceneTests: XCTestCase {
         XCTAssertLessThan(frontDoorPivot.eulerAngles.y, -1.0)
     }
 
+    func testPlayerCanInteractWhenStandingNearBed() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        XCTAssertFalse(gameScene.isPlayerNearBedForInteraction)
+
+        gameScene.movementInputProvider = { CGVector(dx: 0, dy: 1) }
+        gameScene.renderer(renderer, updateAtTime: 0)
+        for frame in 1...22 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        gameScene.movementInputProvider = { CGVector(dx: -1, dy: 0) }
+        for frame in 23...28 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        XCTAssertTrue(gameScene.isPlayerNearBedForInteraction)
+    }
+
+    func testBedSequenceDoesNotStartWhenPlayerIsAwayFromBed() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        XCTAssertFalse(gameScene.beginBedSequence())
+        XCTAssertFalse(gameScene.isBedSequenceActive)
+    }
+
+    func testBedSequencePullsBlanketDownThenFinishes() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.movementInputProvider = { CGVector(dx: 0, dy: 1) }
+        gameScene.renderer(renderer, updateAtTime: 0)
+        for frame in 1...22 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        gameScene.movementInputProvider = { CGVector(dx: -1, dy: 0) }
+        for frame in 23...28 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        let blanket = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "houseBedBlanket", recursively: true))
+        let initialBlanketZ = blanket.position.z
+        let finished = expectation(description: "bed sequence finished")
+        gameScene.onBedSequenceFinished = {
+            finished.fulfill()
+        }
+
+        XCTAssertTrue(gameScene.beginBedSequence())
+        XCTAssertTrue(gameScene.isBedSequenceActive)
+
+        for frame in 29...63 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        XCTAssertGreaterThan(blanket.position.z, initialBlanketZ + 0.12)
+
+        for frame in 64...130 {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
+
+        wait(for: [finished], timeout: 1.0)
+        XCTAssertFalse(gameScene.isBedSequenceActive)
+        XCTAssertGreaterThan(blanket.position.y, Float(0.35))
+    }
+
     private func allNodes(in rootNode: SCNNode) -> [SCNNode] {
         [rootNode] + rootNode.childNodes.flatMap(allNodes(in:))
     }
