@@ -37,4 +37,11 @@ final class HouseLayoutTests: XCTestCase {
         XCTAssertFalse(layout.canInteractWithBed(at: bedCenter, reach: GameConstants.bedInteractionReach))
         XCTAssertFalse(layout.canInteractWithBed(at: layout.center, reach: GameConstants.bedInteractionReach))
     }
+
+    func testBedSleepPointSitsCloserToBedFootThanHeadboard() {
+        let distanceToFoot = layout.bedSleepPoint.y - layout.bedRect.minY
+        let distanceToHeadboard = layout.bedRect.maxY - layout.bedSleepPoint.y
+
+        XCTAssertLessThan(distanceToFoot, distanceToHeadboard)
+    }
 }

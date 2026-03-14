@@ -125,7 +125,7 @@ struct HouseLayout: Equatable {
     var bedSleepPoint: CGPoint {
         CGPoint(
             x: bedRect.midX,
-            y: bedRect.midY + (bedRect.height * 0.22)
+            y: bedRect.minY + (bedRect.height * 0.42)
         )
     }
 }
