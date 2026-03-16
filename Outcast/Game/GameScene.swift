@@ -34,9 +34,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private let ambientLightNode = SCNNode()
     private let directionalLightNode = SCNNode()
     private let fillLightNode = SCNNode()
+    private let worldLayout = GameConstants.worldLayout
 
     private var spawnHouseNode: HouseNode?
-    private var playableRect = CGRect.zero
     private var isFrontDoorOpen = false
     private var worldFocusPoint = CGPoint.zero
     private var roomBounds = RoomBounds(rect: .zero)
@@ -206,28 +206,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func configureWorld() {
-        let worldRect = CGRect(
-            x: -(GameConstants.worldWidth / 2),
-            y: -(GameConstants.worldHeight / 2),
-            width: GameConstants.worldWidth,
-            height: GameConstants.worldHeight
-        )
-        let barrierInset = GameConstants.roomInteriorMargin + GameConstants.treeBarrierDepth
-        let playableRect = worldRect.insetBy(dx: barrierInset, dy: barrierInset)
-        self.playableRect = playableRect
-
         isFrontDoorOpen = false
-        roomBounds = RoomBounds(rect: playableRect, blockedRects: currentBlockedRects())
+        roomBounds = RoomBounds(rect: worldLayout.movementRect, blockedRects: currentBlockedRects())
         worldNode.childNodes.forEach { $0.removeFromParentNode() }
         spawnHouseNode = nil
 
-        addGround(in: worldRect)
-        addFloorDetails(in: playableRect)
+        addGround(in: worldLayout.groundRect)
+        addFloorDetails(in: worldLayout.mainPlayableRect)
+        addRoad()
         addSpawnHouse()
-        addTreeBands(in: worldRect)
+        addTreeBands()
 
         if worldFocusPoint == .zero {
-            worldFocusPoint = CGPoint(x: playableRect.midX, y: playableRect.midY)
+            worldFocusPoint = CGPoint(
+                x: worldLayout.mainPlayableRect.midX,
+                y: worldLayout.mainPlayableRect.midY
+            )
         } else {
             worldFocusPoint = roomBounds.clamped(worldFocusPoint, radius: GameConstants.playerRadius)
         }
@@ -248,12 +242,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 chamferRadius: GameConstants.roomCornerRadius
             )
         )
+        ground.name = "worldGround"
         ground.geometry?.firstMaterial = material(
             diffuse: UIColor(red: 0.09, green: 0.12, blue: 0.14, alpha: 1.0),
             roughness: 0.96
         )
         ground.geometry?.firstMaterial?.normal.contents = UIColor(red: 0.12, green: 0.14, blue: 0.15, alpha: 1.0)
-        ground.position = SCNVector3(0, Float(-GameConstants.groundThickness / 2), 0)
+        ground.position = SCNVector3(
+            Float(worldRect.midX),
+            Float(-GameConstants.groundThickness / 2),
+            Float(-worldRect.midY)
+        )
         ground.castsShadow = false
         worldNode.addChildNode(ground)
     }
@@ -265,34 +264,105 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         spawnHouseNode = house
     }
 
-    private func addTreeBands(in worldRect: CGRect) {
+    private func addRoad() {
+        let roadRect = worldLayout.roadSurfaceRect
+
+        let road = SCNNode(
+            geometry: SCNBox(
+                width: roadRect.width,
+                height: 0.04,
+                length: roadRect.height,
+                chamferRadius: 0.58
+            )
+        )
+        road.name = "northRoad"
+        road.geometry?.firstMaterial = material(
+            diffuse: UIColor(red: 0.26, green: 0.22, blue: 0.18, alpha: 1.0),
+            roughness: 0.96
+        )
+        road.position = position3D(
+            for: CGPoint(x: roadRect.midX, y: roadRect.midY),
+            elevation: 0.021
+        )
+        worldNode.addChildNode(road)
+
+        for offset in [-0.78, 0.78] {
+            let rut = SCNNode(
+                geometry: SCNBox(
+                    width: 0.56,
+                    height: 0.01,
+                    length: roadRect.height * 0.95,
+                    chamferRadius: 0.18
+                )
+            )
+            rut.geometry?.firstMaterial = material(
+                diffuse: UIColor(red: 0.18, green: 0.15, blue: 0.12, alpha: 1.0),
+                roughness: 0.98
+            )
+            rut.position = position3D(
+                for: CGPoint(x: roadRect.midX + CGFloat(offset), y: roadRect.midY),
+                elevation: 0.046
+            )
+            worldNode.addChildNode(rut)
+        }
+    }
+
+    private func addTreeBands() {
+        let worldRect = worldLayout.worldRect
+        let mainPlayableRect = worldLayout.mainPlayableRect
+        let corridorRect = worldLayout.roadCorridorRect
+        let roadClearing = worldLayout.roadTreeClearanceRect
+
         addHorizontalTreeBand(
             startX: worldRect.minX + (GameConstants.treeSpacing / 2),
             endX: worldRect.maxX - (GameConstants.treeSpacing / 2),
-            frontY: roomBounds.rect.maxY + (GameConstants.frontTreeSize * 0.3),
+            frontY: mainPlayableRect.maxY + (GameConstants.frontTreeSize * 0.3),
             depthDirection: 1,
-            variationOffset: 0
+            variationOffset: 0,
+            clearings: [roadClearing]
         )
         addHorizontalTreeBand(
             startX: worldRect.minX + (GameConstants.treeSpacing / 2),
             endX: worldRect.maxX - (GameConstants.treeSpacing / 2),
-            frontY: roomBounds.rect.minY - (GameConstants.frontTreeSize * 0.3),
+            frontY: mainPlayableRect.minY - (GameConstants.frontTreeSize * 0.3),
             depthDirection: -1,
             variationOffset: 1_000
         )
         addVerticalTreeBand(
             startY: worldRect.minY + (GameConstants.treeSpacing / 2),
             endY: worldRect.maxY - (GameConstants.treeSpacing / 2),
-            frontX: roomBounds.rect.minX - (GameConstants.frontTreeSize * 0.3),
+            frontX: mainPlayableRect.minX - (GameConstants.frontTreeSize * 0.3),
             depthDirection: -1,
             variationOffset: 2_000
         )
         addVerticalTreeBand(
             startY: worldRect.minY + (GameConstants.treeSpacing / 2),
             endY: worldRect.maxY - (GameConstants.treeSpacing / 2),
-            frontX: roomBounds.rect.maxX + (GameConstants.frontTreeSize * 0.3),
+            frontX: mainPlayableRect.maxX + (GameConstants.frontTreeSize * 0.3),
             depthDirection: 1,
             variationOffset: 3_000
+        )
+        addVerticalTreeBand(
+            startY: corridorRect.minY + (GameConstants.treeSpacing / 2),
+            endY: worldLayout.movementRect.maxY - (GameConstants.treeSpacing / 2),
+            frontX: corridorRect.minX - (GameConstants.frontTreeSize * 0.65),
+            depthDirection: -1,
+            variationOffset: 4_000
+        )
+        addVerticalTreeBand(
+            startY: corridorRect.minY + (GameConstants.treeSpacing / 2),
+            endY: worldLayout.movementRect.maxY - (GameConstants.treeSpacing / 2),
+            frontX: corridorRect.maxX + (GameConstants.frontTreeSize * 0.65),
+            depthDirection: 1,
+            variationOffset: 5_000
+        )
+        addHorizontalTreeBand(
+            startX: worldRect.minX + (GameConstants.treeSpacing / 2),
+            endX: worldRect.maxX - (GameConstants.treeSpacing / 2),
+            frontY: worldLayout.movementRect.maxY - (GameConstants.treeRowOffset * 0.95),
+            depthDirection: 1,
+            variationOffset: 6_000,
+            clearings: [roadClearing]
         )
     }
 
@@ -301,7 +371,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         endX: CGFloat,
         frontY: CGFloat,
         depthDirection: CGFloat,
-        variationOffset: Int
+        variationOffset: Int,
+        clearings: [CGRect] = []
     ) {
         let midRowY = frontY + (GameConstants.treeRowOffset * depthDirection)
         let backRowY = midRowY + ((GameConstants.treeRowOffset * 0.9) * depthDirection)
@@ -313,61 +384,71 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         while x <= endX {
             let index = treeIndex + variationOffset
             let frontPoint = CGPoint(x: x, y: frontY)
-            let frontTree = TreeNode(
-                size: GameConstants.frontTreeSize,
-                isBackgroundRow: false,
-                variation: variation(for: index, salt: 11)
-            )
-            frontTree.position = position3D(for: frontPoint)
-            worldNode.addChildNode(frontTree)
+            if !clearings.contains(where: { $0.contains(frontPoint) }) {
+                let frontTree = TreeNode(
+                    size: GameConstants.frontTreeSize,
+                    isBackgroundRow: false,
+                    variation: variation(for: index, salt: 11)
+                )
+                frontTree.position = position3D(for: frontPoint)
+                worldNode.addChildNode(frontTree)
+            }
 
             let middlePoint = CGPoint(
                 x: x + (GameConstants.treeSpacing * (0.36 + (variation(for: index, salt: 7) * 0.22))),
                 y: midRowY
             )
-            let middleTree = TreeNode(
-                size: GameConstants.backTreeSize,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 29)
-            )
-            middleTree.position = position3D(for: middlePoint)
-            worldNode.addChildNode(middleTree)
+            if !clearings.contains(where: { $0.contains(middlePoint) }) {
+                let middleTree = TreeNode(
+                    size: GameConstants.backTreeSize,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 29)
+                )
+                middleTree.position = position3D(for: middlePoint)
+                worldNode.addChildNode(middleTree)
+            }
 
             let backPoint = CGPoint(
                 x: x - (GameConstants.treeSpacing * (0.14 + (variation(for: index, salt: 17) * 0.24))),
                 y: backRowY
             )
-            let backTree = TreeNode(
-                size: GameConstants.backTreeSize * 0.96,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 53)
-            )
-            backTree.position = position3D(for: backPoint)
-            worldNode.addChildNode(backTree)
+            if !clearings.contains(where: { $0.contains(backPoint) }) {
+                let backTree = TreeNode(
+                    size: GameConstants.backTreeSize * 0.96,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 53)
+                )
+                backTree.position = position3D(for: backPoint)
+                worldNode.addChildNode(backTree)
+            }
 
             let farPoint = CGPoint(
                 x: x + (GameConstants.treeSpacing * (0.18 + (variation(for: index, salt: 41) * 0.28))),
                 y: farRowY
             )
-            let farTree = TreeNode(
-                size: GameConstants.backTreeSize * 0.9,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 71)
-            )
-            farTree.position = position3D(for: farPoint)
-            worldNode.addChildNode(farTree)
+            if !clearings.contains(where: { $0.contains(farPoint) }) {
+                let farTree = TreeNode(
+                    size: GameConstants.backTreeSize * 0.9,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 71)
+                )
+                farTree.position = position3D(for: farPoint)
+                worldNode.addChildNode(farTree)
+            }
 
             let deepestPoint = CGPoint(
                 x: x - (GameConstants.treeSpacing * (0.1 + (variation(for: index, salt: 61) * 0.3))),
                 y: deepestRowY
             )
-            let deepestTree = TreeNode(
-                size: GameConstants.backTreeSize * 0.84,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 89)
-            )
-            deepestTree.position = position3D(for: deepestPoint)
-            worldNode.addChildNode(deepestTree)
+            if !clearings.contains(where: { $0.contains(deepestPoint) }) {
+                let deepestTree = TreeNode(
+                    size: GameConstants.backTreeSize * 0.84,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 89)
+                )
+                deepestTree.position = position3D(for: deepestPoint)
+                worldNode.addChildNode(deepestTree)
+            }
 
             treeIndex += 1
             x += GameConstants.treeSpacing
@@ -379,7 +460,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         endY: CGFloat,
         frontX: CGFloat,
         depthDirection: CGFloat,
-        variationOffset: Int
+        variationOffset: Int,
+        clearings: [CGRect] = []
     ) {
         let midRowX = frontX + (GameConstants.treeRowOffset * depthDirection)
         let backRowX = midRowX + ((GameConstants.treeRowOffset * 0.9) * depthDirection)
@@ -391,61 +473,71 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         while y <= endY {
             let index = treeIndex + variationOffset
             let frontPoint = CGPoint(x: frontX, y: y)
-            let frontTree = TreeNode(
-                size: GameConstants.frontTreeSize,
-                isBackgroundRow: false,
-                variation: variation(for: index, salt: 101)
-            )
-            frontTree.position = position3D(for: frontPoint)
-            worldNode.addChildNode(frontTree)
+            if !clearings.contains(where: { $0.contains(frontPoint) }) {
+                let frontTree = TreeNode(
+                    size: GameConstants.frontTreeSize,
+                    isBackgroundRow: false,
+                    variation: variation(for: index, salt: 101)
+                )
+                frontTree.position = position3D(for: frontPoint)
+                worldNode.addChildNode(frontTree)
+            }
 
             let middlePoint = CGPoint(
                 x: midRowX,
                 y: y + (GameConstants.treeSpacing * (0.34 + (variation(for: index, salt: 107) * 0.22)))
             )
-            let middleTree = TreeNode(
-                size: GameConstants.backTreeSize,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 131)
-            )
-            middleTree.position = position3D(for: middlePoint)
-            worldNode.addChildNode(middleTree)
+            if !clearings.contains(where: { $0.contains(middlePoint) }) {
+                let middleTree = TreeNode(
+                    size: GameConstants.backTreeSize,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 131)
+                )
+                middleTree.position = position3D(for: middlePoint)
+                worldNode.addChildNode(middleTree)
+            }
 
             let backPoint = CGPoint(
                 x: backRowX,
                 y: y - (GameConstants.treeSpacing * (0.16 + (variation(for: index, salt: 117) * 0.24)))
             )
-            let backTree = TreeNode(
-                size: GameConstants.backTreeSize * 0.96,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 157)
-            )
-            backTree.position = position3D(for: backPoint)
-            worldNode.addChildNode(backTree)
+            if !clearings.contains(where: { $0.contains(backPoint) }) {
+                let backTree = TreeNode(
+                    size: GameConstants.backTreeSize * 0.96,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 157)
+                )
+                backTree.position = position3D(for: backPoint)
+                worldNode.addChildNode(backTree)
+            }
 
             let farPoint = CGPoint(
                 x: farRowX,
                 y: y + (GameConstants.treeSpacing * (0.2 + (variation(for: index, salt: 141) * 0.26)))
             )
-            let farTree = TreeNode(
-                size: GameConstants.backTreeSize * 0.9,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 179)
-            )
-            farTree.position = position3D(for: farPoint)
-            worldNode.addChildNode(farTree)
+            if !clearings.contains(where: { $0.contains(farPoint) }) {
+                let farTree = TreeNode(
+                    size: GameConstants.backTreeSize * 0.9,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 179)
+                )
+                farTree.position = position3D(for: farPoint)
+                worldNode.addChildNode(farTree)
+            }
 
             let deepestPoint = CGPoint(
                 x: deepestRowX,
                 y: y - (GameConstants.treeSpacing * (0.1 + (variation(for: index, salt: 161) * 0.28)))
             )
-            let deepestTree = TreeNode(
-                size: GameConstants.backTreeSize * 0.84,
-                isBackgroundRow: true,
-                variation: variation(for: index, salt: 199)
-            )
-            deepestTree.position = position3D(for: deepestPoint)
-            worldNode.addChildNode(deepestTree)
+            if !clearings.contains(where: { $0.contains(deepestPoint) }) {
+                let deepestTree = TreeNode(
+                    size: GameConstants.backTreeSize * 0.84,
+                    isBackgroundRow: true,
+                    variation: variation(for: index, salt: 199)
+                )
+                deepestTree.position = position3D(for: deepestPoint)
+                worldNode.addChildNode(deepestTree)
+            }
 
             treeIndex += 1
             y += GameConstants.treeSpacing
@@ -453,10 +545,21 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func addFloorDetails(in playableRect: CGRect) {
+        let roadClearanceRect = worldLayout.roadSurfaceRect.insetBy(dx: -0.35, dy: 0)
+
         for index in 0..<24 {
             let xRatio = 0.08 + (variation(for: index, salt: 3) * 0.84)
             let yRatio = 0.08 + (variation(for: index, salt: 5) * 0.84)
             let radius = 0.5 + (variation(for: index, salt: 13) * 1.4)
+            let point = CGPoint(
+                x: playableRect.minX + (playableRect.width * xRatio),
+                y: playableRect.minY + (playableRect.height * yRatio)
+            )
+
+            guard !roadClearanceRect.contains(point) else {
+                continue
+            }
+
             let patch = SCNNode(geometry: SCNCylinder(radius: radius, height: 0.03))
             patch.geometry?.firstMaterial = material(
                 diffuse: UIColor(
@@ -467,13 +570,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 ),
                 roughness: 0.98
             )
-            patch.position = position3D(
-                for: CGPoint(
-                    x: playableRect.minX + (playableRect.width * xRatio),
-                    y: playableRect.minY + (playableRect.height * yRatio)
-                ),
-                elevation: 0.02
-            )
+            patch.position = position3D(for: point, elevation: 0.02)
             worldNode.addChildNode(patch)
         }
     }
@@ -592,11 +689,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func refreshRoomBounds() {
-        roomBounds = RoomBounds(rect: playableRect, blockedRects: currentBlockedRects())
+        roomBounds = RoomBounds(rect: worldLayout.movementRect, blockedRects: currentBlockedRects())
     }
 
     private func currentBlockedRects() -> [CGRect] {
-        GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen)
+        GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen) + worldLayout.blockedRects
     }
 
     private func updateDoorStates(current: CGPoint, proposed: CGPoint) {

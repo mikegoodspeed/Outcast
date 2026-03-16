@@ -6,9 +6,14 @@ final class MovementSystemTests: XCTestCase {
     private let movementSystem = MovementSystem()
     private let roomBounds = RoomBounds(rect: CGRect(x: 10, y: 10, width: 180, height: 120))
     private let houseLayout = GameConstants.spawnHouseLayout
+    private let worldLayout = GameConstants.worldLayout
     private let roomBoundsWithHouse = RoomBounds(
         rect: CGRect(x: -50, y: -50, width: 100, height: 100),
         blockedRects: GameConstants.spawnHouseLayout.blockedRects
+    )
+    private lazy var roomBoundsWithRoad = RoomBounds(
+        rect: worldLayout.movementRect,
+        blockedRects: worldLayout.blockedRects
     )
 
     func testMovementIntegratesOverDeltaTime() {
@@ -126,6 +131,44 @@ final class MovementSystemTests: XCTestCase {
         )
 
         XCTAssertGreaterThanOrEqual(position.x, bedRect.maxX + radius - 0.001)
+    }
+
+    func testMovementCanEnterNorthRoadCorridor() {
+        let radius: CGFloat = 0.48
+        let start = CGPoint(
+            x: worldLayout.roadCorridorRect.midX,
+            y: worldLayout.mainPlayableRect.maxY - 0.8
+        )
+
+        let position = movementSystem.move(
+            from: start,
+            inputVector: CGVector(dx: 0, dy: 1),
+            deltaTime: 1.0,
+            speed: 3.0,
+            radius: radius,
+            within: roomBoundsWithRoad
+        )
+
+        XCTAssertGreaterThan(position.y, worldLayout.mainPlayableRect.maxY)
+    }
+
+    func testMovementCannotLeaveFieldAboveNorthEdgeOutsideRoadCorridor() {
+        let radius: CGFloat = 0.48
+        let start = CGPoint(
+            x: worldLayout.roadCorridorRect.minX - 2.4,
+            y: worldLayout.mainPlayableRect.maxY - 0.8
+        )
+
+        let position = movementSystem.move(
+            from: start,
+            inputVector: CGVector(dx: 0, dy: 1),
+            deltaTime: 1.0,
+            speed: 3.0,
+            radius: radius,
+            within: roomBoundsWithRoad
+        )
+
+        XCTAssertLessThan(position.y, worldLayout.mainPlayableRect.maxY)
     }
 
 }

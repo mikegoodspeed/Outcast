@@ -35,6 +35,27 @@ final class GameSceneTests: XCTestCase {
         XCTAssertTrue(treeNodes.contains { $0.worldPosition.z > 25 })
     }
 
+    func testSceneClearsNorthRoadOpeningWithoutDroppingOuterTreeWalls() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let treePoints = allNodes(in: gameScene.scene.rootNode)
+            .filter { $0.name == "tree" }
+            .map { CGPoint(x: CGFloat($0.worldPosition.x), y: CGFloat(-$0.worldPosition.z)) }
+        let road = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "northRoad", recursively: true))
+        let ground = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "worldGround", recursively: true))
+        let groundGeometry = try XCTUnwrap(ground.geometry as? SCNBox)
+        let worldLayout = GameConstants.worldLayout
+
+        XCTAssertFalse(treePoints.contains { worldLayout.roadTreeClearanceRect.contains($0) })
+        XCTAssertFalse(treePoints.contains { worldLayout.roadSurfaceRect.insetBy(dx: -0.15, dy: 0).contains($0) })
+        XCTAssertTrue(treePoints.contains { $0.y > worldLayout.mainPlayableRect.maxY && $0.x < worldLayout.roadCorridorRect.minX - 1.5 })
+        XCTAssertTrue(treePoints.contains { $0.x > worldLayout.mainPlayableRect.maxX })
+        XCTAssertEqual(CGFloat(road.worldPosition.x), worldLayout.roadSurfaceRect.midX, accuracy: 0.001)
+        XCTAssertGreaterThanOrEqual(
+            CGFloat(-ground.worldPosition.z) + (groundGeometry.length / 2),
+            worldLayout.roadSurfaceRect.maxY - 0.001
+        )
+    }
+
     func testHouseContainsBedInTopLeftInteriorCorner() throws {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
 
