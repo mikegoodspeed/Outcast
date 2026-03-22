@@ -282,7 +282,75 @@ final class GameSceneTests: XCTestCase {
         XCTAssertFalse(gameScene.isBedSequenceActive)
     }
 
+    func testNorthRoadExitTriggersSingleAreaTransitionSignal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        var callbackCount = 0
+        gameScene.onNorthRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...72, input: CGVector(dx: 1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 73...193, input: CGVector(dx: 0, dy: 1))
+        advance(gameScene, renderer: renderer, frames: 194...220, input: CGVector(dx: 0, dy: 1))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "homestead")
+    }
+
+    func testCompletingNorthRoadTransitionBuildsCrossroadsWithTraffic() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.completeNorthRoadTransition()
+
+        let approachRoad = gameScene.scene.rootNode.childNode(withName: "crossroadsApproachRoad", recursively: true)
+        let mainRoad = gameScene.scene.rootNode.childNode(withName: "crossroadsMainRoad", recursively: true)
+        let house = gameScene.scene.rootNode.childNode(withName: "house", recursively: true)
+        let cars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+        let carVariants = Set(cars.map(\.childNodes.count))
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+        XCTAssertNotNil(approachRoad)
+        XCTAssertNotNil(mainRoad)
+        XCTAssertNil(house)
+        XCTAssertGreaterThanOrEqual(cars.count, 6)
+        XCTAssertGreaterThan(carVariants.count, 1)
+    }
+
+    func testTrafficCarsMoveAfterCrossroadsLoads() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+
+        let initialCars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+        let initialXPositions = initialCars.map(\.worldPosition.x)
+
+        advance(gameScene, renderer: renderer, frames: 0...45, input: .zero)
+
+        let movedCars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+        let movedXPositions = movedCars.map(\.worldPosition.x)
+
+        XCTAssertEqual(initialXPositions.count, movedXPositions.count)
+        XCTAssertNotEqual(initialXPositions, movedXPositions)
+    }
+
     private func allNodes(in rootNode: SCNNode) -> [SCNNode] {
         [rootNode] + rootNode.childNodes.flatMap(allNodes(in:))
+    }
+
+    private func advance(
+        _ gameScene: GameScene,
+        renderer: SCNRenderer,
+        frames: ClosedRange<Int>,
+        input: CGVector
+    ) {
+        gameScene.movementInputProvider = { input }
+        for frame in frames {
+            gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
+        }
     }
 }

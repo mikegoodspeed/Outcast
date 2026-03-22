@@ -148,6 +148,11 @@ final class GameViewController: UIViewController {
                 self?.presentSleepFade()
             }
         }
+        gameScene.onNorthRoadExitReached = { [weak self] in
+            DispatchQueue.main.async {
+                self?.presentAreaTransitionFade()
+            }
+        }
     }
 
     @objc
@@ -383,6 +388,14 @@ final class GameViewController: UIViewController {
         actionButton.alpha = isBedPromptVisible ? 0.45 : 1
     }
 
+    private func lockControlsForTransition() {
+        setBedPromptVisible(false)
+        areControlsLocked = true
+        inputController.reset()
+        joystickView.resetControl()
+        refreshControlState()
+    }
+
     private func presentSleepFade() {
         sleepFadeView.isHidden = false
         UIView.animate(
@@ -402,6 +415,36 @@ final class GameViewController: UIViewController {
         gameScene.wakeFromBed()
         UIView.animate(
             withDuration: GameConstants.sleepFadeDuration,
+            animations: {
+                self.sleepFadeView.alpha = 0
+            },
+            completion: { _ in
+                self.sleepFadeView.isHidden = true
+                self.areControlsLocked = false
+                self.refreshControlState()
+                self.becomeFirstResponder()
+            }
+        )
+    }
+
+    private func presentAreaTransitionFade() {
+        lockControlsForTransition()
+        sleepFadeView.isHidden = false
+        UIView.animate(
+            withDuration: GameConstants.areaTransitionFadeDuration,
+            animations: {
+                self.sleepFadeView.alpha = 1
+            },
+            completion: { _ in
+                self.finishAreaTransition()
+            }
+        )
+    }
+
+    private func finishAreaTransition() {
+        gameScene.completeNorthRoadTransition()
+        UIView.animate(
+            withDuration: GameConstants.areaTransitionFadeDuration,
             animations: {
                 self.sleepFadeView.alpha = 0
             },

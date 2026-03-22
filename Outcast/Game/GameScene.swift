@@ -3,6 +3,11 @@ import SceneKit
 import UIKit
 
 final class GameScene: NSObject, SCNSceneRendererDelegate {
+    private enum Area {
+        case homestead
+        case crossroads
+    }
+
     private struct BedSequenceState {
         let startPoint: CGPoint
         let approachPoint: CGPoint
@@ -10,11 +15,25 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var startTime: TimeInterval?
     }
 
+    private struct TrafficCarState {
+        let node: SCNNode
+        let laneY: CGFloat
+        let direction: CGFloat
+        let speed: CGFloat
+        let halfLength: CGFloat
+        var x: CGFloat
+    }
+
     var movementInputProvider: () -> CGVector = { .zero }
     var onBedSequenceFinished: (() -> Void)?
+    var onNorthRoadExitReached: (() -> Void)?
     let scene = SCNScene()
     var isPlayerNearBedForInteraction: Bool {
-        GameConstants.spawnHouseLayout.canInteractWithBed(
+        guard currentArea == .homestead else {
+            return false
+        }
+
+        return GameConstants.spawnHouseLayout.canInteractWithBed(
             at: worldFocusPoint,
             reach: GameConstants.bedInteractionReach
         )
@@ -24,6 +43,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
     var daylightCycleProgress: CGFloat {
         CGFloat(daylightElapsed / GameConstants.daylightCycleDuration)
+    }
+    var currentAreaIdentifier: String {
+        switch currentArea {
+        case .homestead:
+            return "homestead"
+        case .crossroads:
+            return "crossroads"
+        }
     }
 
     private let playerNode = PlayerNode(radius: GameConstants.playerRadius)
@@ -38,6 +65,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private var spawnHouseNode: HouseNode?
     private var isFrontDoorOpen = false
+    private var currentArea: Area = .homestead
+    private var areaTransitionPending = false
     private var worldFocusPoint = CGPoint.zero
     private var roomBounds = RoomBounds(rect: .zero)
     private var lastUpdateTime: TimeInterval?
@@ -46,6 +75,25 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var lastFacingVector = CGVector(dx: 0, dy: -1)
     private var viewportSize: CGSize
     private var bedSequence: BedSequenceState?
+    private var trafficCars: [TrafficCarState] = []
+
+    private var activeMovementRect: CGRect {
+        switch currentArea {
+        case .homestead:
+            return worldLayout.movementRect
+        case .crossroads:
+            return GameConstants.crossroadsLayout.movementRect
+        }
+    }
+
+    private var defaultSpawnPoint: CGPoint {
+        switch currentArea {
+        case .homestead:
+            return .zero
+        case .crossroads:
+            return GameConstants.crossroadsLayout.spawnPoint
+        }
+    }
 
     init(size: CGSize) {
         self.viewportSize = size
@@ -62,9 +110,30 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         viewportSize = size
     }
 
+    func completeNorthRoadTransition() {
+        guard currentArea == .homestead else {
+            return
+        }
+
+        currentArea = .crossroads
+        areaTransitionPending = false
+        isFrontDoorOpen = false
+        sleepReturnPoint = nil
+        bedSequence = nil
+        worldFocusPoint = GameConstants.crossroadsLayout.spawnPoint
+        lastFacingVector = CGVector(dx: 0, dy: 1)
+        lastUpdateTime = nil
+
+        playerNode.setMovementState(.idle)
+        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
+        playerNode.setFacing(vector: lastFacingVector, animated: false)
+
+        configureWorld()
+    }
+
     @discardableResult
     func beginBedSequence() -> Bool {
-        guard !isBedSequenceActive, isPlayerNearBedForInteraction else {
+        guard currentArea == .homestead, !isBedSequenceActive, isPlayerNearBedForInteraction else {
             return false
         }
 
@@ -112,6 +181,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         let deltaTime = min(max(currentTime - lastUpdateTime, 0), 1.0 / 30.0)
+
+        if areaTransitionPending {
+            playerNode.setMovementState(.idle)
+            updatePlayerGrounding()
+            updateWorldOffset()
+            updateHousePresentation()
+            return
+        }
+
         let movementVector = movementInputProvider().clampedToUnit
         advanceDaylight(by: deltaTime)
         let intensity = movementVector.magnitude
@@ -145,8 +223,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         if movementVector != .zero {
             lastFacingVector = movementVector.normalized
         }
-        playerNode.setMovementState(animationState)
+        playerNode.setMovementState(areaTransitionPending ? .idle : animationState)
         playerNode.setFacing(vector: movementVector)
+        updateAreaTransitionIfNeeded()
+        updateTraffic(by: deltaTime)
         updatePlayerGrounding()
         updateWorldOffset()
         updateHousePresentation()
@@ -207,21 +287,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func configureWorld() {
         isFrontDoorOpen = false
-        roomBounds = RoomBounds(rect: worldLayout.movementRect, blockedRects: currentBlockedRects())
+        roomBounds = RoomBounds(rect: activeMovementRect, blockedRects: currentBlockedRects())
         worldNode.childNodes.forEach { $0.removeFromParentNode() }
         spawnHouseNode = nil
+        trafficCars.removeAll()
 
-        addGround(in: worldLayout.groundRect)
-        addFloorDetails(in: worldLayout.mainPlayableRect)
-        addRoad()
-        addSpawnHouse()
-        addTreeBands()
+        switch currentArea {
+        case .homestead:
+            addHomesteadWorld()
+        case .crossroads:
+            addCrossroadsWorld()
+        }
 
         if worldFocusPoint == .zero {
-            worldFocusPoint = CGPoint(
-                x: worldLayout.mainPlayableRect.midX,
-                y: worldLayout.mainPlayableRect.midY
-            )
+            worldFocusPoint = defaultSpawnPoint
         } else {
             worldFocusPoint = roomBounds.clamped(worldFocusPoint, radius: GameConstants.playerRadius)
         }
@@ -257,6 +336,29 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         worldNode.addChildNode(ground)
     }
 
+    private func addHomesteadWorld() {
+        addGround(in: worldLayout.groundRect)
+        addFloorDetails(in: worldLayout.mainPlayableRect, excludedRects: [worldLayout.roadSurfaceRect.insetBy(dx: -0.35, dy: 0)])
+        addHomesteadRoad()
+        addSpawnHouse()
+        addHomesteadTreeBands()
+    }
+
+    private func addCrossroadsWorld() {
+        let crossroadsLayout = GameConstants.crossroadsLayout
+        addGround(in: crossroadsLayout.worldRect)
+        addFloorDetails(
+            in: crossroadsLayout.movementRect,
+            excludedRects: [
+                crossroadsLayout.verticalRoadRect.insetBy(dx: -0.35, dy: 0),
+                crossroadsLayout.horizontalRoadRect.insetBy(dx: 0, dy: -0.35)
+            ]
+        )
+        addCrossroadsRoadNetwork()
+        addCrossroadsTreeBands()
+        addTrafficCars()
+    }
+
     private func addSpawnHouse() {
         let house = HouseNode(layout: GameConstants.spawnHouseLayout, wallHeight: GameConstants.houseWallHeight)
         house.position = position3D(for: GameConstants.spawnHouseLayout.center)
@@ -264,7 +366,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         spawnHouseNode = house
     }
 
-    private func addRoad() {
+    private func addHomesteadRoad() {
         let roadRect = worldLayout.roadSurfaceRect
 
         let road = SCNNode(
@@ -307,7 +409,91 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
-    private func addTreeBands() {
+    private func addCrossroadsRoadNetwork() {
+        let layout = GameConstants.crossroadsLayout
+
+        let approachRoad = SCNNode(
+            geometry: SCNBox(
+                width: layout.verticalRoadRect.width,
+                height: 0.04,
+                length: layout.verticalRoadRect.height,
+                chamferRadius: 0.46
+            )
+        )
+        approachRoad.name = "crossroadsApproachRoad"
+        approachRoad.geometry?.firstMaterial = material(
+            diffuse: UIColor(red: 0.25, green: 0.23, blue: 0.22, alpha: 1.0),
+            roughness: 0.95
+        )
+        approachRoad.position = position3D(
+            for: CGPoint(x: layout.verticalRoadRect.midX, y: layout.verticalRoadRect.midY),
+            elevation: 0.021
+        )
+        worldNode.addChildNode(approachRoad)
+
+        let mainRoad = SCNNode(
+            geometry: SCNBox(
+                width: layout.horizontalRoadRect.width,
+                height: 0.05,
+                length: layout.horizontalRoadRect.height,
+                chamferRadius: 0.54
+            )
+        )
+        mainRoad.name = "crossroadsMainRoad"
+        mainRoad.geometry?.firstMaterial = material(
+            diffuse: UIColor(red: 0.22, green: 0.21, blue: 0.2, alpha: 1.0),
+            roughness: 0.94
+        )
+        mainRoad.position = position3D(
+            for: CGPoint(x: layout.horizontalRoadRect.midX, y: layout.horizontalRoadRect.midY),
+            elevation: 0.022
+        )
+        worldNode.addChildNode(mainRoad)
+
+        let shoulderOffsets = [-1.15, 1.15]
+        for offset in shoulderOffsets {
+            let laneMark = SCNNode(
+                geometry: SCNBox(
+                    width: layout.horizontalRoadRect.width * 0.92,
+                    height: 0.008,
+                    length: 0.14,
+                    chamferRadius: 0.04
+                )
+            )
+            laneMark.geometry?.firstMaterial = material(
+                diffuse: UIColor(red: 0.91, green: 0.84, blue: 0.44, alpha: 1.0),
+                roughness: 0.62
+            )
+            laneMark.position = position3D(
+                for: CGPoint(x: layout.horizontalRoadRect.midX, y: layout.horizontalRoadRect.midY + CGFloat(offset)),
+                elevation: 0.05
+            )
+            worldNode.addChildNode(laneMark)
+        }
+
+        for index in 0..<12 {
+            let stripe = SCNNode(
+                geometry: SCNBox(
+                    width: 1.7,
+                    height: 0.01,
+                    length: 0.18,
+                    chamferRadius: 0.05
+                )
+            )
+            stripe.geometry?.firstMaterial = material(
+                diffuse: UIColor(red: 0.92, green: 0.89, blue: 0.7, alpha: 1.0),
+                roughness: 0.58
+            )
+            let x = layout.horizontalRoadRect.minX + 4.5 + (CGFloat(index) * 7.0)
+            stripe.position = position3D(
+                for: CGPoint(x: x, y: layout.horizontalRoadRect.midY),
+                elevation: 0.053
+            )
+            worldNode.addChildNode(stripe)
+        }
+    }
+
+    private func addHomesteadTreeBands() {
         let worldRect = worldLayout.worldRect
         let mainPlayableRect = worldLayout.mainPlayableRect
         let corridorRect = worldLayout.roadCorridorRect
@@ -363,6 +549,39 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             depthDirection: 1,
             variationOffset: 6_000,
             clearings: [roadClearing]
+        )
+    }
+
+    private func addCrossroadsTreeBands() {
+        let layout = GameConstants.crossroadsLayout
+
+        addHorizontalTreeBand(
+            startX: layout.worldRect.minX + (GameConstants.treeSpacing / 2),
+            endX: layout.worldRect.maxX - (GameConstants.treeSpacing / 2),
+            frontY: layout.movementRect.maxY + (GameConstants.frontTreeSize * 0.3),
+            depthDirection: 1,
+            variationOffset: 7_000
+        )
+        addHorizontalTreeBand(
+            startX: layout.worldRect.minX + (GameConstants.treeSpacing / 2),
+            endX: layout.worldRect.maxX - (GameConstants.treeSpacing / 2),
+            frontY: layout.movementRect.minY - (GameConstants.frontTreeSize * 0.3),
+            depthDirection: -1,
+            variationOffset: 8_000
+        )
+        addVerticalTreeBand(
+            startY: layout.worldRect.minY + (GameConstants.treeSpacing / 2),
+            endY: layout.worldRect.maxY - (GameConstants.treeSpacing / 2),
+            frontX: layout.movementRect.minX - (GameConstants.frontTreeSize * 0.3),
+            depthDirection: -1,
+            variationOffset: 9_000
+        )
+        addVerticalTreeBand(
+            startY: layout.worldRect.minY + (GameConstants.treeSpacing / 2),
+            endY: layout.worldRect.maxY - (GameConstants.treeSpacing / 2),
+            frontX: layout.movementRect.maxX + (GameConstants.frontTreeSize * 0.3),
+            depthDirection: 1,
+            variationOffset: 10_000
         )
     }
 
@@ -544,9 +763,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
-    private func addFloorDetails(in playableRect: CGRect) {
-        let roadClearanceRect = worldLayout.roadSurfaceRect.insetBy(dx: -0.35, dy: 0)
-
+    private func addFloorDetails(in playableRect: CGRect, excludedRects: [CGRect]) {
         for index in 0..<24 {
             let xRatio = 0.08 + (variation(for: index, salt: 3) * 0.84)
             let yRatio = 0.08 + (variation(for: index, salt: 5) * 0.84)
@@ -556,7 +773,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 y: playableRect.minY + (playableRect.height * yRatio)
             )
 
-            guard !roadClearanceRect.contains(point) else {
+            guard !excludedRects.contains(where: { $0.contains(point) }) else {
                 continue
             }
 
@@ -572,6 +789,155 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             )
             patch.position = position3D(for: point, elevation: 0.02)
             worldNode.addChildNode(patch)
+        }
+    }
+
+    private func addTrafficCars() {
+        let layout = GameConstants.crossroadsLayout
+        let colors: [UIColor] = [
+            UIColor(red: 0.83, green: 0.24, blue: 0.22, alpha: 1.0),
+            UIColor(red: 0.21, green: 0.49, blue: 0.82, alpha: 1.0),
+            UIColor(red: 0.94, green: 0.73, blue: 0.22, alpha: 1.0),
+            UIColor(red: 0.18, green: 0.67, blue: 0.43, alpha: 1.0),
+            UIColor(red: 0.78, green: 0.44, blue: 0.19, alpha: 1.0),
+            UIColor(red: 0.56, green: 0.34, blue: 0.76, alpha: 1.0)
+        ]
+        let configurations: [(CGFloat, CGFloat, Int)] = [
+            (layout.trafficWrapRange.lowerBound + 8, layout.trafficLaneYs[0], 0),
+            (layout.trafficWrapRange.upperBound - 14, layout.trafficLaneYs[1], 1),
+            (layout.trafficWrapRange.lowerBound + 31, layout.trafficLaneYs[0], 2),
+            (layout.trafficWrapRange.upperBound - 37, layout.trafficLaneYs[1], 3),
+            (layout.trafficWrapRange.lowerBound + 53, layout.trafficLaneYs[0], 4),
+            (layout.trafficWrapRange.upperBound - 61, layout.trafficLaneYs[1], 5)
+        ]
+
+        trafficCars = configurations.enumerated().map { index, configuration in
+            let (x, laneY, colorIndex) = configuration
+            let direction: CGFloat = laneY < layout.horizontalRoadRect.midY ? 1 : -1
+            let length = 2.6 + (variation(for: index, salt: 311) * 1.3)
+            let width = 1.34 + (variation(for: index, salt: 313) * 0.42)
+            let node = trafficCarNode(
+                styleIndex: index,
+                bodyColor: colors[colorIndex % colors.count],
+                length: length,
+                width: width
+            )
+            node.position = position3D(for: CGPoint(x: x, y: laneY), elevation: 0.05)
+            worldNode.addChildNode(node)
+
+            return TrafficCarState(
+                node: node,
+                laneY: laneY,
+                direction: direction,
+                speed: GameConstants.trafficCarBaseSpeed + (variation(for: index, salt: 317) * 2.8),
+                halfLength: length / 2,
+                x: x
+            )
+        }
+    }
+
+    private func trafficCarNode(styleIndex: Int, bodyColor: UIColor, length: CGFloat, width: CGFloat) -> SCNNode {
+        let root = SCNNode()
+        root.name = "trafficCar"
+
+        let bodyMaterial = material(diffuse: bodyColor, roughness: 0.6)
+        let trimMaterial = material(
+            diffuse: UIColor(red: 0.12, green: 0.14, blue: 0.16, alpha: 1.0),
+            roughness: 0.55
+        )
+        let windowMaterial = material(
+            diffuse: UIColor(red: 0.73, green: 0.84, blue: 0.95, alpha: 1.0),
+            roughness: 0.18
+        )
+        windowMaterial.transparency = 0.88
+
+        let body = SCNNode(
+            geometry: SCNBox(
+                width: length,
+                height: 0.72,
+                length: width,
+                chamferRadius: 0.16
+            )
+        )
+        body.geometry?.firstMaterial = bodyMaterial
+        body.position = SCNVector3(0, 0.46, 0)
+        root.addChildNode(body)
+
+        let cabinLength = length * (styleIndex % 3 == 0 ? 0.38 : 0.46)
+        let cabin = SCNNode(
+            geometry: SCNBox(
+                width: cabinLength,
+                height: styleIndex.isMultiple(of: 2) ? 0.62 : 0.74,
+                length: width * 0.82,
+                chamferRadius: 0.12
+            )
+        )
+        cabin.geometry?.firstMaterial = styleIndex % 3 == 1 ? trimMaterial : windowMaterial
+        cabin.position = SCNVector3(
+            Float(styleIndex % 2 == 0 ? length * 0.12 : -length * 0.08),
+            Float(styleIndex.isMultiple(of: 2) ? 0.98 : 1.04),
+            0
+        )
+        root.addChildNode(cabin)
+
+        if styleIndex % 3 == 2 {
+            let cargo = SCNNode(
+                geometry: SCNBox(
+                    width: length * 0.3,
+                    height: 0.28,
+                    length: width * 0.74,
+                    chamferRadius: 0.08
+                )
+            )
+            cargo.geometry?.firstMaterial = trimMaterial
+            cargo.position = SCNVector3(Float(-length * 0.18), 0.86, 0)
+            root.addChildNode(cargo)
+        }
+
+        let wheelOffsets = [
+            (length * 0.3, width * 0.34),
+            (length * 0.3, -width * 0.34),
+            (-length * 0.3, width * 0.34),
+            (-length * 0.3, -width * 0.34)
+        ]
+        for (x, z) in wheelOffsets {
+            let wheel = SCNNode(geometry: SCNCylinder(radius: 0.23, height: 0.18))
+            wheel.geometry?.firstMaterial = trimMaterial
+            wheel.position = SCNVector3(Float(x), 0.22, Float(z))
+            wheel.eulerAngles.x = .pi / 2
+            root.addChildNode(wheel)
+        }
+
+        return root
+    }
+
+    private func updateTraffic(by deltaTime: TimeInterval) {
+        guard currentArea == .crossroads else {
+            return
+        }
+
+        let layout = GameConstants.crossroadsLayout
+
+        for index in trafficCars.indices {
+            trafficCars[index].x += trafficCars[index].direction * trafficCars[index].speed * deltaTime
+
+            if
+                trafficCars[index].direction > 0,
+                trafficCars[index].x - trafficCars[index].halfLength > layout.trafficWrapRange.upperBound
+            {
+                trafficCars[index].x = layout.trafficWrapRange.lowerBound - trafficCars[index].halfLength
+            } else if
+                trafficCars[index].direction < 0,
+                trafficCars[index].x + trafficCars[index].halfLength < layout.trafficWrapRange.lowerBound
+            {
+                trafficCars[index].x = layout.trafficWrapRange.upperBound + trafficCars[index].halfLength
+            }
+
+            trafficCars[index].node.position = position3D(
+                for: CGPoint(x: trafficCars[index].x, y: trafficCars[index].laneY),
+                elevation: 0.05
+            )
+            trafficCars[index].node.eulerAngles.y = trafficCars[index].direction > 0 ? 0 : .pi
         }
     }
 
@@ -671,6 +1037,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func updateHousePresentation() {
+        guard currentArea == .homestead else {
+            return
+        }
+
         spawnHouseNode?.setRoofHidden(GameConstants.spawnHouseLayout.containsInterior(worldFocusPoint))
     }
 
@@ -679,7 +1049,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func currentGroundElevation() -> CGFloat {
-        guard GameConstants.spawnHouseLayout.containsInterior(worldFocusPoint) else {
+        guard
+            currentArea == .homestead,
+            GameConstants.spawnHouseLayout.containsInterior(worldFocusPoint)
+        else {
             return 0
         }
 
@@ -689,14 +1062,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func refreshRoomBounds() {
-        roomBounds = RoomBounds(rect: worldLayout.movementRect, blockedRects: currentBlockedRects())
+        roomBounds = RoomBounds(rect: activeMovementRect, blockedRects: currentBlockedRects())
     }
 
     private func currentBlockedRects() -> [CGRect] {
-        GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen) + worldLayout.blockedRects
+        switch currentArea {
+        case .homestead:
+            return GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen) + worldLayout.blockedRects
+        case .crossroads:
+            return []
+        }
     }
 
     private func updateDoorStates(current: CGPoint, proposed: CGPoint) {
+        guard currentArea == .homestead else {
+            isFrontDoorOpen = false
+            return
+        }
+
         let frontDoorShouldOpen = shouldOpenDoor(
             openingRect: GameConstants.spawnHouseLayout.frontDoorOpeningRect,
             current: current,
@@ -717,6 +1100,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         isFrontDoorOpen = frontDoorShouldOpen
         spawnHouseNode?.setFrontDoorOpen(frontDoorShouldOpen, swingDirection: frontDoorSwingDirection)
+    }
+
+    private func updateAreaTransitionIfNeeded() {
+        guard currentArea == .homestead, !areaTransitionPending else {
+            return
+        }
+
+        let exitThreshold = worldLayout.movementRect.maxY - (GameConstants.playerRadius + 0.1)
+        guard
+            worldFocusPoint.y >= exitThreshold,
+            worldLayout.roadCorridorRect.insetBy(dx: 0.15, dy: 0).contains(worldFocusPoint)
+        else {
+            return
+        }
+
+        areaTransitionPending = true
+        playerNode.setMovementState(.idle)
+        onNorthRoadExitReached?()
     }
 
     private func shouldOpenDoor(openingRect: CGRect, current: CGPoint, proposed: CGPoint) -> Bool {

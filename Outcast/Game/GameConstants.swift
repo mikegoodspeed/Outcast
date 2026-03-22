@@ -77,6 +77,52 @@ struct WorldLayout: Equatable {
     }
 }
 
+struct CrossroadsLayout: Equatable {
+    let worldRect: CGRect
+    let movementRect: CGRect
+    let spawnPoint: CGPoint
+    let verticalRoadRect: CGRect
+    let horizontalRoadRect: CGRect
+    let trafficLaneYs: [CGFloat]
+    let trafficWrapRange: ClosedRange<CGFloat>
+
+    init(
+        worldRect: CGRect,
+        barrierInset: CGFloat,
+        verticalRoadWidth: CGFloat,
+        horizontalRoadHeight: CGFloat,
+        approachLead: CGFloat,
+        intersectionOffset: CGFloat,
+        trafficWrapInset: CGFloat
+    ) {
+        self.worldRect = worldRect
+        movementRect = worldRect.insetBy(dx: barrierInset, dy: barrierInset)
+
+        let roadCenterY = movementRect.minY + intersectionOffset
+        horizontalRoadRect = CGRect(
+            x: worldRect.minX - 6,
+            y: roadCenterY - (horizontalRoadHeight / 2),
+            width: worldRect.width + 12,
+            height: horizontalRoadHeight
+        )
+        verticalRoadRect = CGRect(
+            x: -(verticalRoadWidth / 2),
+            y: movementRect.minY - 3.4,
+            width: verticalRoadWidth,
+            height: (horizontalRoadRect.midY + (horizontalRoadHeight / 2)) - (movementRect.minY - 3.4)
+        )
+        spawnPoint = CGPoint(
+            x: verticalRoadRect.midX,
+            y: movementRect.minY + approachLead
+        )
+        trafficLaneYs = [
+            horizontalRoadRect.midY - (horizontalRoadHeight * 0.18),
+            horizontalRoadRect.midY + (horizontalRoadHeight * 0.18)
+        ]
+        trafficWrapRange = (worldRect.minX - trafficWrapInset)...(worldRect.maxX + trafficWrapInset)
+    }
+}
+
 enum GameConstants {
     static let playerRadius: CGFloat = 0.48
     static let walkInputThreshold: CGFloat = 0.7
@@ -110,6 +156,15 @@ enum GameConstants {
         groundNorthOverscan: 16.0,
         treeClearanceX: 0.9,
         treeClearanceY: 1.35
+    )
+    static let crossroadsLayout = CrossroadsLayout(
+        worldRect: worldRect,
+        barrierInset: worldBarrierInset,
+        verticalRoadWidth: 5.8,
+        horizontalRoadHeight: 8.6,
+        approachLead: 4.8,
+        intersectionOffset: 16.8,
+        trafficWrapInset: 12.0
     )
     static let houseWidth: CGFloat = 6.8
     static let houseDepth: CGFloat = 5.6
@@ -150,4 +205,6 @@ enum GameConstants {
     static let daylightCycleDuration: TimeInterval = 15 * 60
     static let sleepFadeDuration: TimeInterval = 0.55
     static let sleepBlackoutDuration: TimeInterval = 2.0
+    static let areaTransitionFadeDuration: TimeInterval = 0.42
+    static let trafficCarBaseSpeed: CGFloat = 8.2
 }
