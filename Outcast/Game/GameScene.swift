@@ -21,6 +21,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let direction: CGFloat
         let speed: CGFloat
         let halfLength: CGFloat
+        let halfWidth: CGFloat
         var x: CGFloat
     }
 
@@ -983,6 +984,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 direction: direction,
                 speed: GameConstants.trafficCarBaseSpeed + (variation(for: index, salt: 317) * 2.8),
                 halfLength: length / 2,
+                halfWidth: width / 2,
                 x: x
             )
         }
@@ -1134,7 +1136,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         parkedCarState.node.position = position3D(for: parkedCarState.point, elevation: 0.05)
         parkedCarState.node.eulerAngles.y = Float(
-            atan2(-parkedCarState.headingVector.dy, parkedCarState.headingVector.dx)
+            atan2(parkedCarState.headingVector.dy, parkedCarState.headingVector.dx)
         )
     }
 
@@ -1178,16 +1180,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         let layout = GameConstants.crossroadsLayout
-        let yieldRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
-        let pedestrianCrossing = layout.horizontalRoadRect.insetBy(dx: 0, dy: -yieldRadius * 0.4)
-        let pedestrianX = pedestrianCrossing.contains(worldFocusPoint) ? worldFocusPoint.x : nil
+        let obstacleRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+        let eastboundObstacleX = trafficLaneInteractionRect(
+            laneY: layout.trafficLaneYs[0],
+            obstacleRadius: obstacleRadius
+        ).contains(worldFocusPoint) ? worldFocusPoint.x : nil
+        let westboundObstacleX = trafficLaneInteractionRect(
+            laneY: layout.trafficLaneYs[1],
+            obstacleRadius: obstacleRadius
+        ).contains(worldFocusPoint) ? worldFocusPoint.x : nil
 
         updateTrafficLane(
             indices: trafficCars.indices
                 .filter { trafficCars[$0].direction > 0 }
                 .sorted { trafficCars[$0].x > trafficCars[$1].x },
             direction: 1,
-            pedestrianX: pedestrianX,
+            obstacleX: eastboundObstacleX,
             deltaTime: deltaTime,
             layout: layout
         )
@@ -1196,7 +1204,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 .filter { trafficCars[$0].direction < 0 }
                 .sorted { trafficCars[$0].x < trafficCars[$1].x },
             direction: -1,
-            pedestrianX: pedestrianX,
+            obstacleX: westboundObstacleX,
             deltaTime: deltaTime,
             layout: layout
         )
@@ -1213,7 +1221,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func updateTrafficLane(
         indices: [Int],
         direction: CGFloat,
-        pedestrianX: CGFloat?,
+        obstacleX: CGFloat?,
         deltaTime: TimeInterval,
         layout: CrossroadsLayout
     ) {
@@ -1224,16 +1232,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let car = trafficCars[index]
             var proposedX = car.x + (car.direction * car.speed * deltaTime)
 
-            if let pedestrianX {
-                if direction > 0, car.x < pedestrianX {
-                    let stopCenterX = pedestrianX
-                        - GameConstants.playerRadius
+            if let obstacleX {
+                if direction > 0, car.x < obstacleX {
+                    let stopCenterX = obstacleX
+                        - activeTrafficObstacleRadius
                         - GameConstants.trafficPedestrianYieldGap
                         - car.halfLength
                     proposedX = min(proposedX, stopCenterX)
-                } else if direction < 0, car.x > pedestrianX {
-                    let stopCenterX = pedestrianX
-                        + GameConstants.playerRadius
+                } else if direction < 0, car.x > obstacleX {
+                    let stopCenterX = obstacleX
+                        + activeTrafficObstacleRadius
                         + GameConstants.trafficPedestrianYieldGap
                         + car.halfLength
                     proposedX = max(proposedX, stopCenterX)
@@ -1250,6 +1258,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             }
 
             var wrapped = false
+            if direction > 0 {
+                proposedX = max(proposedX, car.x)
+            } else {
+                proposedX = min(proposedX, car.x)
+            }
             if
                 direction > 0,
                 proposedX - car.halfLength > layout.trafficWrapRange.upperBound
@@ -1274,6 +1287,31 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 leaderHalfLength = car.halfLength
             }
         }
+    }
+
+    private var activeTrafficObstacleRadius: CGFloat {
+        isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+    }
+
+    private func trafficLaneInteractionRect(laneY: CGFloat, obstacleRadius: CGFloat) -> CGRect {
+        let laneHalfHeight = GameConstants.trafficCarMaxWidth / 2
+            + obstacleRadius
+            + GameConstants.trafficPedestrianYieldGap
+        return CGRect(
+            x: GameConstants.crossroadsLayout.horizontalRoadRect.minX,
+            y: laneY - laneHalfHeight,
+            width: GameConstants.crossroadsLayout.horizontalRoadRect.width,
+            height: laneHalfHeight * 2
+        )
+    }
+
+    private func trafficCarFootprintRect(for car: TrafficCarState) -> CGRect {
+        CGRect(
+            x: car.x - car.halfLength,
+            y: car.laneY - car.halfWidth,
+            width: car.halfLength * 2,
+            height: car.halfWidth * 2
+        )
     }
 
     private func updateWorldOffset() {
@@ -1409,7 +1447,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 : GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen)
             baseBlockedRects = houseBlockedRects + worldLayout.blockedRects
         case .crossroads:
-            baseBlockedRects = []
+            baseBlockedRects = trafficCars.map(trafficCarFootprintRect(for:))
         }
 
         guard
