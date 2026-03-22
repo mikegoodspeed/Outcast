@@ -319,6 +319,26 @@ final class GameSceneTests: XCTestCase {
         XCTAssertGreaterThan(carVariants.count, 1)
     }
 
+    func testParkedCarOnlyAppearsInCrossroadsAndStaysOffRoad() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let layout = GameConstants.crossroadsLayout
+
+        XCTAssertNil(gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true))
+
+        gameScene.completeNorthRoadTransition()
+
+        let parkedCar = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true))
+        let parkedCarRect = CGRect(
+            x: CGFloat(parkedCar.position.x) - (GameConstants.parkedCarWidth / 2),
+            y: CGFloat(-parkedCar.position.z) - (GameConstants.parkedCarLength / 2),
+            width: GameConstants.parkedCarWidth,
+            height: GameConstants.parkedCarLength
+        )
+
+        XCTAssertFalse(layout.verticalRoadRect.intersects(parkedCarRect))
+        XCTAssertFalse(layout.horizontalRoadRect.intersects(parkedCarRect))
+    }
+
     func testSouthRoadExitTriggersSingleReturnHomeSignal() {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
         let renderer = SCNRenderer(device: nil, options: nil)
@@ -407,7 +427,7 @@ final class GameSceneTests: XCTestCase {
         gameScene.completeNorthRoadTransition()
 
         advance(gameScene, renderer: renderer, frames: 0...28, input: CGVector(dx: 0, dy: 1))
-        advance(gameScene, renderer: renderer, frames: 29...170, input: .zero)
+        advance(gameScene, renderer: renderer, frames: 29...240, input: .zero)
 
         let settledCars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
         let settledEastboundLeadX = try XCTUnwrap(
@@ -423,7 +443,7 @@ final class GameSceneTests: XCTestCase {
                 .min()
         )
 
-        advance(gameScene, renderer: renderer, frames: 171...230, input: .zero)
+        advance(gameScene, renderer: renderer, frames: 241...300, input: .zero)
 
         let stoppedCars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
         let stoppedEastboundLeadX = try XCTUnwrap(
@@ -443,6 +463,124 @@ final class GameSceneTests: XCTestCase {
         XCTAssertGreaterThan(stoppedWestboundLeadX, 0)
         XCTAssertEqual(stoppedEastboundLeadX, settledEastboundLeadX, accuracy: 0.001)
         XCTAssertEqual(stoppedWestboundLeadX, settledWestboundLeadX, accuracy: 0.001)
+    }
+
+    func testPlayerCanEnterAndDriveParkedCarInCrossroads() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+
+        advance(gameScene, renderer: renderer, frames: 0...18, input: CGVector(dx: 1, dy: 0))
+
+        let player = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "player", recursively: true))
+        let parkedCar = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true))
+        let initialCarX = parkedCar.position.x
+
+        XCTAssertTrue(gameScene.isPlayerNearParkedCarForInteraction)
+        XCTAssertTrue(gameScene.beginDrivingParkedCar())
+        XCTAssertTrue(gameScene.isDrivingParkedCar)
+        XCTAssertTrue(player.isHidden)
+
+        advance(gameScene, renderer: renderer, frames: 19...42, input: CGVector(dx: 1, dy: 0))
+
+        let drivenCarX = parkedCar.position.x
+        let drivenCarZ = parkedCar.position.z
+
+        XCTAssertGreaterThan(drivenCarX, initialCarX + 0.5)
+        XCTAssertEqual(parkedCar.eulerAngles.y, 0, accuracy: 0.15)
+        XCTAssertTrue(gameScene.endDrivingParkedCar())
+        XCTAssertFalse(gameScene.isDrivingParkedCar)
+        XCTAssertFalse(player.isHidden)
+        XCTAssertEqual(parkedCar.position.x, drivenCarX, accuracy: 0.001)
+        XCTAssertEqual(parkedCar.position.z, drivenCarZ, accuracy: 0.001)
+
+        let horizontalSeparation = abs(CGFloat(player.worldPosition.x - parkedCar.position.x))
+        let verticalSeparation = abs(CGFloat(player.worldPosition.z - parkedCar.position.z))
+
+        XCTAssertGreaterThan(max(horizontalSeparation, verticalSeparation), 0.9)
+    }
+
+    func testDrivingCarTriggersSouthExitAndCarriesIntoHome() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        advance(gameScene, renderer: renderer, frames: 0...18, input: CGVector(dx: 1, dy: 0))
+        XCTAssertTrue(gameScene.beginDrivingParkedCar())
+
+        var callbackCount = 0
+        gameScene.onSouthRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 19...26, input: CGVector(dx: -1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 27...50, input: CGVector(dx: 0, dy: -1))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+
+        gameScene.completeSouthRoadTransition()
+
+        let homeCar = gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "home")
+        XCTAssertTrue(gameScene.isDrivingParkedCar)
+        XCTAssertNotNil(homeCar)
+    }
+
+    func testDrivingCarCanTravelBackToCrossroads() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        advance(gameScene, renderer: renderer, frames: 0...18, input: CGVector(dx: 1, dy: 0))
+        XCTAssertTrue(gameScene.beginDrivingParkedCar())
+
+        gameScene.completeSouthRoadTransition()
+        let homeCar = gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "home")
+        XCTAssertTrue(gameScene.isDrivingParkedCar)
+        XCTAssertNotNil(homeCar)
+
+        gameScene.completeNorthRoadTransition()
+        let crossroadsCar = gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+        XCTAssertTrue(gameScene.isDrivingParkedCar)
+        XCTAssertNotNil(crossroadsCar)
+    }
+
+    func testDrivingCarCannotEnterHouseOrOpenFrontDoor() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        advance(gameScene, renderer: renderer, frames: 0...18, input: CGVector(dx: 1, dy: 0))
+        XCTAssertTrue(gameScene.beginDrivingParkedCar())
+        gameScene.completeSouthRoadTransition()
+
+        let frontDoorPivot = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "frontDoorPivot", recursively: true))
+        let parkedCar = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true))
+
+        advance(gameScene, renderer: renderer, frames: 0...38, input: CGVector(dx: 0, dy: -1))
+        advance(gameScene, renderer: renderer, frames: 39...92, input: CGVector(dx: -1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 93...160, input: CGVector(dx: 0, dy: -1))
+
+        let parkedCarX = CGFloat(parkedCar.position.x)
+        let parkedCarY = CGFloat(-parkedCar.position.z)
+
+        XCTAssertEqual(frontDoorPivot.eulerAngles.y, 0, accuracy: 0.001)
+        XCTAssertLessThan(abs(parkedCarX), GameConstants.spawnHouseLayout.outerRect.width / 2)
+        XCTAssertGreaterThanOrEqual(
+            parkedCarY,
+            GameConstants.spawnHouseLayout.outerRect.maxY + GameConstants.parkedCarMovementRadius - 0.05
+        )
     }
 
     private func allNodes(in rootNode: SCNNode) -> [SCNNode] {

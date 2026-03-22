@@ -24,6 +24,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         var x: CGFloat
     }
 
+    private struct ParkedCarState {
+        let node: SCNNode
+        let halfLength: CGFloat
+        let halfWidth: CGFloat
+        var area: Area
+        var point: CGPoint
+        var headingVector: CGVector
+        var isOccupied: Bool
+    }
+
     var movementInputProvider: () -> CGVector = { .zero }
     var onBedSequenceFinished: (() -> Void)?
     var onNorthRoadExitReached: (() -> Void)?
@@ -41,6 +51,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
     var isBedSequenceActive: Bool {
         bedSequence != nil
+    }
+    var isPlayerNearParkedCarForInteraction: Bool {
+        guard
+            let parkedCarState,
+            parkedCarState.area == currentArea,
+            !parkedCarState.isOccupied
+        else {
+            return false
+        }
+
+        return parkedCarInteractionRect(for: parkedCarState.point).contains(worldFocusPoint)
+    }
+    var isDrivingParkedCar: Bool {
+        parkedCarState?.isOccupied == true
     }
     var daylightCycleProgress: CGFloat {
         CGFloat(daylightElapsed / GameConstants.daylightCycleDuration)
@@ -77,6 +101,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var viewportSize: CGSize
     private var bedSequence: BedSequenceState?
     private var trafficCars: [TrafficCarState] = []
+    private var parkedCarState: ParkedCarState?
 
     private var activeMovementRect: CGRect {
         switch currentArea {
@@ -116,18 +141,30 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return
         }
 
+        let destinationPoint = GameConstants.crossroadsLayout.spawnPoint
+        let destinationHeading = CGVector(dx: 0, dy: 1)
         currentArea = .crossroads
         areaTransitionPending = false
         isFrontDoorOpen = false
         sleepReturnPoint = nil
         bedSequence = nil
-        worldFocusPoint = GameConstants.crossroadsLayout.spawnPoint
-        lastFacingVector = CGVector(dx: 0, dy: 1)
+        lastFacingVector = destinationHeading
         lastUpdateTime = nil
+
+        if var parkedCarState, parkedCarState.isOccupied {
+            parkedCarState.area = .crossroads
+            parkedCarState.point = destinationPoint
+            parkedCarState.headingVector = destinationHeading
+            self.parkedCarState = parkedCarState
+            worldFocusPoint = destinationPoint
+        } else {
+            worldFocusPoint = destinationPoint
+        }
 
         playerNode.setMovementState(.idle)
         playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
         playerNode.setFacing(vector: lastFacingVector, animated: false)
+        playerNode.isHidden = parkedCarState?.isOccupied == true
 
         configureWorld()
     }
@@ -137,18 +174,30 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return
         }
 
+        let destinationPoint = worldLayout.northRoadReturnPoint
+        let destinationHeading = CGVector(dx: 0, dy: -1)
         currentArea = .homestead
         areaTransitionPending = false
         isFrontDoorOpen = false
         sleepReturnPoint = nil
         bedSequence = nil
-        worldFocusPoint = worldLayout.northRoadReturnPoint
-        lastFacingVector = CGVector(dx: 0, dy: -1)
+        lastFacingVector = destinationHeading
         lastUpdateTime = nil
+
+        if var parkedCarState, parkedCarState.isOccupied {
+            parkedCarState.area = .homestead
+            parkedCarState.point = destinationPoint
+            parkedCarState.headingVector = destinationHeading
+            self.parkedCarState = parkedCarState
+            worldFocusPoint = destinationPoint
+        } else {
+            worldFocusPoint = destinationPoint
+        }
 
         playerNode.setMovementState(.idle)
         playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
         playerNode.setFacing(vector: lastFacingVector, animated: false)
+        playerNode.isHidden = parkedCarState?.isOccupied == true
 
         configureWorld()
     }
@@ -170,6 +219,58 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return true
     }
 
+    @discardableResult
+    func beginDrivingParkedCar() -> Bool {
+        guard
+            var parkedCarState,
+            parkedCarState.area == currentArea,
+            !parkedCarState.isOccupied,
+            isPlayerNearParkedCarForInteraction
+        else {
+            return false
+        }
+
+        parkedCarState.isOccupied = true
+        self.parkedCarState = parkedCarState
+        refreshRoomBounds()
+        worldFocusPoint = roomBounds.clamped(
+            parkedCarState.point,
+            radius: GameConstants.parkedCarMovementRadius
+        )
+        playerNode.isHidden = true
+        playerNode.setMovementState(.idle)
+        updateParkedCarNode()
+        updateWorldOffset()
+        return true
+    }
+
+    @discardableResult
+    func endDrivingParkedCar() -> Bool {
+        guard
+            var parkedCarState,
+            parkedCarState.area == currentArea,
+            parkedCarState.isOccupied
+        else {
+            return false
+        }
+
+        let exitPoint = parkedCarExitPoint(
+            from: parkedCarState.point,
+            heading: parkedCarState.headingVector
+        )
+        parkedCarState.isOccupied = false
+        self.parkedCarState = parkedCarState
+        refreshRoomBounds()
+        worldFocusPoint = exitPoint
+        playerNode.isHidden = false
+        playerNode.setMovementState(.idle)
+        playerNode.setFacing(vector: parkedCarState.headingVector, animated: false)
+        updateParkedCarNode()
+        updatePlayerGrounding()
+        updateWorldOffset()
+        return true
+    }
+
     func wakeFromBed() {
         guard let sleepReturnPoint else {
             return
@@ -184,6 +285,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         playerNode.setMovementState(.idle)
         playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
         playerNode.setFacing(vector: lastFacingVector, animated: false)
+        playerNode.isHidden = false
         resetDaylightCycle()
         refreshRoomBounds()
         updatePlayerGrounding()
@@ -217,7 +319,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         let intensity = movementVector.magnitude
         let animationState: PlayerNode.MovementState
 
-        if intensity == 0 {
+        if isDrivingParkedCar || intensity == 0 {
             animationState = .idle
         } else if intensity < GameConstants.walkInputThreshold {
             animationState = .walking
@@ -225,7 +327,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             animationState = .running
         }
 
-        let travelSpeed = GameConstants.walkSpeed + ((GameConstants.runSpeed - GameConstants.walkSpeed) * intensity)
+        let travelSpeed: CGFloat
+        let movementRadius: CGFloat
+        if isDrivingParkedCar {
+            travelSpeed = GameConstants.parkedCarDriveSpeed * intensity
+            movementRadius = GameConstants.parkedCarMovementRadius
+        } else {
+            travelSpeed = GameConstants.walkSpeed + ((GameConstants.runSpeed - GameConstants.walkSpeed) * intensity)
+            movementRadius = GameConstants.playerRadius
+        }
         let proposedPoint = CGPoint(
             x: worldFocusPoint.x + (movementVector.dx * travelSpeed * deltaTime),
             y: worldFocusPoint.y + (movementVector.dy * travelSpeed * deltaTime)
@@ -233,20 +343,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         updateDoorStates(current: worldFocusPoint, proposed: proposedPoint)
         refreshRoomBounds()
 
+        let previousFocusPoint = worldFocusPoint
         worldFocusPoint = movementSystem.move(
             from: worldFocusPoint,
             inputVector: movementVector,
             deltaTime: deltaTime,
             speed: travelSpeed,
-            radius: GameConstants.playerRadius,
+            radius: movementRadius,
             within: roomBounds
         )
 
-        if movementVector != .zero {
-            lastFacingVector = movementVector.normalized
+        let actualMovementVector = vector(from: previousFocusPoint, to: worldFocusPoint)
+        if actualMovementVector != .zero {
+            lastFacingVector = actualMovementVector
         }
-        playerNode.setMovementState(areaTransitionPending ? .idle : animationState)
-        playerNode.setFacing(vector: movementVector)
+        if isDrivingParkedCar {
+            playerNode.setMovementState(.idle)
+        } else {
+            playerNode.setMovementState(areaTransitionPending ? .idle : animationState)
+            playerNode.setFacing(vector: movementVector)
+        }
+        updateParkedCarStateIfNeeded()
         updateAreaTransitionIfNeeded()
         updateTraffic(by: deltaTime)
         updatePlayerGrounding()
@@ -321,13 +438,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             addCrossroadsWorld()
         }
 
+        refreshRoomBounds()
+
         if worldFocusPoint == .zero {
             worldFocusPoint = defaultSpawnPoint
         } else {
-            worldFocusPoint = roomBounds.clamped(worldFocusPoint, radius: GameConstants.playerRadius)
+            let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+            worldFocusPoint = roomBounds.clamped(worldFocusPoint, radius: movementRadius)
         }
 
+        playerNode.isHidden = isDrivingParkedCar
         updatePlayerGrounding()
+        updateParkedCarNode()
         updateWorldOffset()
         updateHousePresentation()
         spawnHouseNode?.setBedBlanketState(coverage: 1, occupant: 0)
@@ -364,6 +486,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         addHomesteadRoad()
         addSpawnHouse()
         addHomesteadTreeBands()
+        ensureParkedCarForCurrentArea(defaultPoint: worldLayout.northRoadReturnPoint)
     }
 
     private func addCrossroadsWorld() {
@@ -379,6 +502,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         addCrossroadsRoadNetwork()
         addCrossroadsTreeBands()
         addTrafficCars()
+        ensureParkedCarForCurrentArea(defaultPoint: GameConstants.parkedCarPoint)
     }
 
     private func addSpawnHouse() {
@@ -847,7 +971,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 styleIndex: index,
                 bodyColor: colors[colorIndex % colors.count],
                 length: length,
-                width: width
+                width: width,
+                name: "trafficCar"
             )
             node.position = position3D(for: CGPoint(x: x, y: laneY), elevation: 0.05)
             worldNode.addChildNode(node)
@@ -863,9 +988,43 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
-    private func trafficCarNode(styleIndex: Int, bodyColor: UIColor, length: CGFloat, width: CGFloat) -> SCNNode {
+    private func ensureParkedCarForCurrentArea(defaultPoint: CGPoint) {
+        if parkedCarState == nil, currentArea == .crossroads {
+            let node = trafficCarNode(
+                styleIndex: 6,
+                bodyColor: UIColor(red: 0.78, green: 0.16, blue: 0.14, alpha: 1.0),
+                length: GameConstants.parkedCarLength,
+                width: GameConstants.parkedCarWidth,
+                name: "parkedCar"
+            )
+            parkedCarState = ParkedCarState(
+                node: node,
+                halfLength: GameConstants.parkedCarLength / 2,
+                halfWidth: GameConstants.parkedCarWidth / 2,
+                area: .crossroads,
+                point: defaultPoint,
+                headingVector: CGVector(dx: 0, dy: 1),
+                isOccupied: false
+            )
+        }
+
+        guard let parkedCarState, parkedCarState.area == currentArea else {
+            return
+        }
+
+        updateParkedCarNode()
+        worldNode.addChildNode(parkedCarState.node)
+    }
+
+    private func trafficCarNode(
+        styleIndex: Int,
+        bodyColor: UIColor,
+        length: CGFloat,
+        width: CGFloat,
+        name: String
+    ) -> SCNNode {
         let root = SCNNode()
-        root.name = "trafficCar"
+        root.name = name
 
         let bodyMaterial = material(diffuse: bodyColor, roughness: 0.6)
         let trimMaterial = material(
@@ -938,13 +1097,89 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return root
     }
 
+    private func parkedCarFootprintRect(for point: CGPoint) -> CGRect {
+        CGRect(
+            x: point.x - (GameConstants.parkedCarWidth / 2),
+            y: point.y - (GameConstants.parkedCarLength / 2),
+            width: GameConstants.parkedCarWidth,
+            height: GameConstants.parkedCarLength
+        )
+    }
+
+    private func parkedCarInteractionRect(for point: CGPoint) -> CGRect {
+        parkedCarFootprintRect(for: point).insetBy(
+            dx: -GameConstants.parkedCarInteractionReach,
+            dy: -GameConstants.parkedCarInteractionReach
+        )
+    }
+
+    private func updateParkedCarStateIfNeeded() {
+        guard var parkedCarState else {
+            return
+        }
+
+        if parkedCarState.isOccupied {
+            parkedCarState.point = worldFocusPoint
+            parkedCarState.headingVector = lastFacingVector
+            parkedCarState.area = currentArea
+            self.parkedCarState = parkedCarState
+        }
+        updateParkedCarNode()
+    }
+
+    private func updateParkedCarNode() {
+        guard let parkedCarState else {
+            return
+        }
+
+        parkedCarState.node.position = position3D(for: parkedCarState.point, elevation: 0.05)
+        parkedCarState.node.eulerAngles.y = Float(
+            atan2(-parkedCarState.headingVector.dy, parkedCarState.headingVector.dx)
+        )
+    }
+
+    private func parkedCarExitPoint(from point: CGPoint, heading: CGVector) -> CGPoint {
+        let forward = heading == .zero ? CGVector(dx: 0, dy: 1) : heading.normalized
+        let lateral = CGVector(dx: -forward.dy, dy: forward.dx)
+        let exitDistance = GameConstants.parkedCarWidth / 2 + GameConstants.playerRadius + 0.42
+        let fallbackDistance = GameConstants.parkedCarLength / 2 + GameConstants.playerRadius + 0.4
+
+        let candidates = [
+            CGPoint(x: point.x + (lateral.dx * exitDistance), y: point.y + (lateral.dy * exitDistance)),
+            CGPoint(x: point.x - (lateral.dx * exitDistance), y: point.y - (lateral.dy * exitDistance)),
+            CGPoint(x: point.x - (forward.dx * fallbackDistance), y: point.y - (forward.dy * fallbackDistance))
+        ]
+
+        for candidate in candidates {
+            let clamped = CGPoint(
+                x: min(max(candidate.x, activeMovementRect.minX + GameConstants.playerRadius), activeMovementRect.maxX - GameConstants.playerRadius),
+                y: min(max(candidate.y, activeMovementRect.minY + GameConstants.playerRadius), activeMovementRect.maxY - GameConstants.playerRadius)
+            )
+            if parkedCarFootprintRect(for: point)
+                .insetBy(dx: -GameConstants.playerRadius, dy: -GameConstants.playerRadius)
+                .contains(clamped) == false
+            {
+                return clamped
+            }
+        }
+
+        return CGPoint(
+            x: point.x,
+            y: min(
+                max(point.y - fallbackDistance, activeMovementRect.minY + GameConstants.playerRadius),
+                activeMovementRect.maxY - GameConstants.playerRadius
+            )
+        )
+    }
+
     private func updateTraffic(by deltaTime: TimeInterval) {
         guard currentArea == .crossroads else {
             return
         }
 
         let layout = GameConstants.crossroadsLayout
-        let pedestrianCrossing = layout.horizontalRoadRect.insetBy(dx: 0, dy: -GameConstants.playerRadius * 0.4)
+        let yieldRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+        let pedestrianCrossing = layout.horizontalRoadRect.insetBy(dx: 0, dy: -yieldRadius * 0.4)
         let pedestrianX = pedestrianCrossing.contains(worldFocusPoint) ? worldFocusPoint.x : nil
 
         updateTrafficLane(
@@ -1166,17 +1401,32 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func currentBlockedRects() -> [CGRect] {
+        let baseBlockedRects: [CGRect]
         switch currentArea {
         case .homestead:
-            return GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen) + worldLayout.blockedRects
+            let houseBlockedRects = isDrivingParkedCar
+                ? [GameConstants.spawnHouseLayout.outerRect]
+                : GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen)
+            baseBlockedRects = houseBlockedRects + worldLayout.blockedRects
         case .crossroads:
-            return []
+            baseBlockedRects = []
         }
+
+        guard
+            let parkedCarState,
+            parkedCarState.area == currentArea,
+            !parkedCarState.isOccupied
+        else {
+            return baseBlockedRects
+        }
+
+        return baseBlockedRects + [parkedCarFootprintRect(for: parkedCarState.point)]
     }
 
     private func updateDoorStates(current: CGPoint, proposed: CGPoint) {
-        guard currentArea == .homestead else {
+        guard currentArea == .homestead, !isDrivingParkedCar else {
             isFrontDoorOpen = false
+            spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
             return
         }
 
@@ -1209,7 +1459,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         switch currentArea {
         case .homestead:
-            let exitThreshold = worldLayout.movementRect.maxY - (GameConstants.playerRadius + 0.1)
+            let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+            let exitThreshold = worldLayout.movementRect.maxY - (movementRadius + 0.1)
             guard
                 worldFocusPoint.y >= exitThreshold,
                 worldLayout.roadCorridorRect.insetBy(dx: 0.15, dy: 0).contains(worldFocusPoint)
@@ -1222,7 +1473,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             onNorthRoadExitReached?()
         case .crossroads:
             let layout = GameConstants.crossroadsLayout
-            let exitThreshold = layout.movementRect.minY + (GameConstants.playerRadius + 0.1)
+            let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+            let exitThreshold = layout.movementRect.minY + (movementRadius + 0.1)
             guard
                 worldFocusPoint.y <= exitThreshold,
                 layout.verticalRoadRect.insetBy(dx: 0.2, dy: 0).contains(worldFocusPoint)

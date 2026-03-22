@@ -216,4 +216,13 @@ enum GameConstants {
     static let trafficCarMaxWidth: CGFloat = 1.76
     static let trafficPedestrianYieldGap: CGFloat = 0.78
     static let trafficCarFollowingGap: CGFloat = 0.92
+    static let parkedCarLength: CGFloat = 3.35
+    static let parkedCarWidth: CGFloat = 1.72
+    static let parkedCarInteractionReach: CGFloat = 1.35
+    static let parkedCarDriveSpeed: CGFloat = 12.4
+    static let parkedCarMovementRadius: CGFloat = 0.96
+    static let parkedCarPoint = CGPoint(
+        x: crossroadsLayout.verticalRoadRect.maxX + (parkedCarWidth / 2) + 0.65,
+        y: crossroadsLayout.spawnPoint.y + 0.7
+    )
 }

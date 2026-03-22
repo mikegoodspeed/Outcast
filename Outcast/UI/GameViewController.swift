@@ -332,10 +332,26 @@ final class GameViewController: UIViewController {
 
         switch action {
         case .togglePrompt:
-            guard gameScene.isPlayerNearBedForInteraction || isBedPromptVisible else {
+            if gameScene.isDrivingParkedCar {
+                inputController.reset()
+                joystickView.resetControl()
+                _ = gameScene.endDrivingParkedCar()
+                refreshControlState()
                 return
             }
-            setBedPromptVisible(!isBedPromptVisible)
+
+            if gameScene.isPlayerNearBedForInteraction || isBedPromptVisible {
+                setBedPromptVisible(!isBedPromptVisible)
+                return
+            }
+
+            guard gameScene.isPlayerNearParkedCarForInteraction else {
+                return
+            }
+            inputController.reset()
+            joystickView.resetControl()
+            _ = gameScene.beginDrivingParkedCar()
+            refreshControlState()
         case .confirmPrompt:
             guard isBedPromptVisible else {
                 return
