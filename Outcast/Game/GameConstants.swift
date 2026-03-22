@@ -8,6 +8,7 @@ struct WorldLayout: Equatable {
     let movementRect: CGRect
     let roadCorridorRect: CGRect
     let roadSurfaceRect: CGRect
+    let northRoadReturnPoint: CGPoint
     let roadTreeClearanceRect: CGRect
     let blockedRects: [CGRect]
 
@@ -48,6 +49,10 @@ struct WorldLayout: Equatable {
             y: mainPlayableRect.maxY - roadLeadIn,
             width: roadSurfaceWidth,
             height: (movementRect.maxY - (mainPlayableRect.maxY - roadLeadIn)) + roadLookahead
+        )
+        northRoadReturnPoint = CGPoint(
+            x: roadCorridorRect.midX,
+            y: roadCorridorRect.maxY - 3.2
         )
         groundRect = worldRect.union(
             CGRect(
@@ -115,9 +120,10 @@ struct CrossroadsLayout: Equatable {
             x: verticalRoadRect.midX,
             y: movementRect.minY + approachLead
         )
+        let laneOffset = horizontalRoadHeight * 0.25
         trafficLaneYs = [
-            horizontalRoadRect.midY - (horizontalRoadHeight * 0.18),
-            horizontalRoadRect.midY + (horizontalRoadHeight * 0.18)
+            horizontalRoadRect.midY - laneOffset,
+            horizontalRoadRect.midY + laneOffset
         ]
         trafficWrapRange = (worldRect.minX - trafficWrapInset)...(worldRect.maxX + trafficWrapInset)
     }
@@ -160,8 +166,8 @@ enum GameConstants {
     static let crossroadsLayout = CrossroadsLayout(
         worldRect: worldRect,
         barrierInset: worldBarrierInset,
-        verticalRoadWidth: 5.8,
-        horizontalRoadHeight: 8.6,
+        verticalRoadWidth: 6.8,
+        horizontalRoadHeight: 10.8,
         approachLead: 4.8,
         intersectionOffset: 16.8,
         trafficWrapInset: 12.0
@@ -207,4 +213,5 @@ enum GameConstants {
     static let sleepBlackoutDuration: TimeInterval = 2.0
     static let areaTransitionFadeDuration: TimeInterval = 0.42
     static let trafficCarBaseSpeed: CGFloat = 8.2
+    static let trafficCarMaxWidth: CGFloat = 1.76
 }

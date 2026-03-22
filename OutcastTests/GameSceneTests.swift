@@ -297,7 +297,7 @@ final class GameSceneTests: XCTestCase {
         advance(gameScene, renderer: renderer, frames: 194...220, input: CGVector(dx: 0, dy: 1))
 
         XCTAssertEqual(callbackCount, 1)
-        XCTAssertEqual(gameScene.currentAreaIdentifier, "homestead")
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "home")
     }
 
     func testCompletingNorthRoadTransitionBuildsCrossroadsWithTraffic() {
@@ -317,6 +317,66 @@ final class GameSceneTests: XCTestCase {
         XCTAssertNil(house)
         XCTAssertGreaterThanOrEqual(cars.count, 6)
         XCTAssertGreaterThan(carVariants.count, 1)
+    }
+
+    func testSouthRoadExitTriggersSingleReturnHomeSignal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onSouthRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...36, input: CGVector(dx: 0, dy: -1))
+        advance(gameScene, renderer: renderer, frames: 37...60, input: CGVector(dx: 0, dy: -1))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+    }
+
+    func testCompletingSouthRoadTransitionReturnsPlayerToHome() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeSouthRoadTransition()
+
+        let house = gameScene.scene.rootNode.childNode(withName: "house", recursively: true)
+        let northRoad = gameScene.scene.rootNode.childNode(withName: "northRoad", recursively: true)
+        let crossroadsRoad = gameScene.scene.rootNode.childNode(withName: "crossroadsMainRoad", recursively: true)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "home")
+        XCTAssertNotNil(house)
+        XCTAssertNotNil(northRoad)
+        XCTAssertNil(crossroadsRoad)
+    }
+
+    func testCrossroadsKeepsTreesOffRoadAndCarsInsideTravelLanes() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let layout = GameConstants.crossroadsLayout
+
+        gameScene.completeNorthRoadTransition()
+
+        let treePoints = allNodes(in: gameScene.scene.rootNode)
+            .filter { $0.name == "tree" }
+            .map { CGPoint(x: CGFloat($0.position.x), y: CGFloat(-$0.position.z)) }
+        let carPoints = allNodes(in: gameScene.scene.rootNode)
+            .filter { $0.name == "trafficCar" }
+            .map { CGPoint(x: CGFloat($0.position.x), y: CGFloat(-$0.position.z)) }
+        let minimumLaneEdgeClearance = layout.trafficLaneYs
+            .map { min($0 - layout.horizontalRoadRect.minY, layout.horizontalRoadRect.maxY - $0) }
+            .min() ?? 0
+
+        XCTAssertFalse(treePoints.contains { layout.horizontalRoadRect.insetBy(dx: -0.8, dy: -1.2).contains($0) })
+        XCTAssertFalse(treePoints.contains { layout.verticalRoadRect.insetBy(dx: -0.7, dy: -1.0).contains($0) })
+        XCTAssertGreaterThanOrEqual(minimumLaneEdgeClearance, (GameConstants.trafficCarMaxWidth / 2) + 0.25)
+        XCTAssertFalse(carPoints.isEmpty)
+        XCTAssertTrue(carPoints.allSatisfy { point in
+            layout.trafficLaneYs.contains { abs($0 - point.y) < 0.001 }
+        })
     }
 
     func testTrafficCarsMoveAfterCrossroadsLoads() {

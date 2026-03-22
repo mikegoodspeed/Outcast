@@ -150,7 +150,16 @@ final class GameViewController: UIViewController {
         }
         gameScene.onNorthRoadExitReached = { [weak self] in
             DispatchQueue.main.async {
-                self?.presentAreaTransitionFade()
+                self?.presentAreaTransitionFade {
+                    self?.gameScene.completeNorthRoadTransition()
+                }
+            }
+        }
+        gameScene.onSouthRoadExitReached = { [weak self] in
+            DispatchQueue.main.async {
+                self?.presentAreaTransitionFade {
+                    self?.gameScene.completeSouthRoadTransition()
+                }
             }
         }
     }
@@ -427,7 +436,7 @@ final class GameViewController: UIViewController {
         )
     }
 
-    private func presentAreaTransitionFade() {
+    private func presentAreaTransitionFade(transition: @escaping () -> Void) {
         lockControlsForTransition()
         sleepFadeView.isHidden = false
         UIView.animate(
@@ -436,13 +445,13 @@ final class GameViewController: UIViewController {
                 self.sleepFadeView.alpha = 1
             },
             completion: { _ in
-                self.finishAreaTransition()
+                self.finishAreaTransition(transition: transition)
             }
         )
     }
 
-    private func finishAreaTransition() {
-        gameScene.completeNorthRoadTransition()
+    private func finishAreaTransition(transition: @escaping () -> Void) {
+        transition()
         UIView.animate(
             withDuration: GameConstants.areaTransitionFadeDuration,
             animations: {

@@ -27,6 +27,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var movementInputProvider: () -> CGVector = { .zero }
     var onBedSequenceFinished: (() -> Void)?
     var onNorthRoadExitReached: (() -> Void)?
+    var onSouthRoadExitReached: (() -> Void)?
     let scene = SCNScene()
     var isPlayerNearBedForInteraction: Bool {
         guard currentArea == .homestead else {
@@ -47,7 +48,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var currentAreaIdentifier: String {
         switch currentArea {
         case .homestead:
-            return "homestead"
+            return "home"
         case .crossroads:
             return "crossroads"
         }
@@ -122,6 +123,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         bedSequence = nil
         worldFocusPoint = GameConstants.crossroadsLayout.spawnPoint
         lastFacingVector = CGVector(dx: 0, dy: 1)
+        lastUpdateTime = nil
+
+        playerNode.setMovementState(.idle)
+        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
+        playerNode.setFacing(vector: lastFacingVector, animated: false)
+
+        configureWorld()
+    }
+
+    func completeSouthRoadTransition() {
+        guard currentArea == .crossroads else {
+            return
+        }
+
+        currentArea = .homestead
+        areaTransitionPending = false
+        isFrontDoorOpen = false
+        sleepReturnPoint = nil
+        bedSequence = nil
+        worldFocusPoint = worldLayout.northRoadReturnPoint
+        lastFacingVector = CGVector(dx: 0, dy: -1)
         lastUpdateTime = nil
 
         playerNode.setMovementState(.idle)
@@ -350,8 +372,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         addFloorDetails(
             in: crossroadsLayout.movementRect,
             excludedRects: [
-                crossroadsLayout.verticalRoadRect.insetBy(dx: -0.35, dy: 0),
-                crossroadsLayout.horizontalRoadRect.insetBy(dx: 0, dy: -0.35)
+                crossroadsLayout.verticalRoadRect.insetBy(dx: -0.55, dy: -0.25),
+                crossroadsLayout.horizontalRoadRect.insetBy(dx: -0.75, dy: -0.45)
             ]
         )
         addCrossroadsRoadNetwork()
@@ -450,33 +472,33 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         )
         worldNode.addChildNode(mainRoad)
 
-        let shoulderOffsets = [-1.15, 1.15]
-        for offset in shoulderOffsets {
-            let laneMark = SCNNode(
+        let edgeOffsets = [-3.9, 3.9]
+        for offset in edgeOffsets {
+            let edgeStripe = SCNNode(
                 geometry: SCNBox(
-                    width: layout.horizontalRoadRect.width * 0.92,
+                    width: layout.horizontalRoadRect.width * 0.94,
                     height: 0.008,
-                    length: 0.14,
+                    length: 0.16,
                     chamferRadius: 0.04
                 )
             )
-            laneMark.geometry?.firstMaterial = material(
-                diffuse: UIColor(red: 0.91, green: 0.84, blue: 0.44, alpha: 1.0),
+            edgeStripe.geometry?.firstMaterial = material(
+                diffuse: UIColor(red: 0.93, green: 0.93, blue: 0.9, alpha: 1.0),
                 roughness: 0.62
             )
-            laneMark.position = position3D(
+            edgeStripe.position = position3D(
                 for: CGPoint(x: layout.horizontalRoadRect.midX, y: layout.horizontalRoadRect.midY + CGFloat(offset)),
                 elevation: 0.05
             )
-            worldNode.addChildNode(laneMark)
+            worldNode.addChildNode(edgeStripe)
         }
 
-        for index in 0..<12 {
+        for index in 0..<13 {
             let stripe = SCNNode(
                 geometry: SCNBox(
-                    width: 1.7,
+                    width: 1.95,
                     height: 0.01,
-                    length: 0.18,
+                    length: 0.2,
                     chamferRadius: 0.05
                 )
             )
@@ -484,7 +506,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 diffuse: UIColor(red: 0.92, green: 0.89, blue: 0.7, alpha: 1.0),
                 roughness: 0.58
             )
-            let x = layout.horizontalRoadRect.minX + 4.5 + (CGFloat(index) * 7.0)
+            let x = layout.horizontalRoadRect.minX + 4.7 + (CGFloat(index) * 7.15)
             stripe.position = position3D(
                 for: CGPoint(x: x, y: layout.horizontalRoadRect.midY),
                 elevation: 0.053
@@ -554,6 +576,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func addCrossroadsTreeBands() {
         let layout = GameConstants.crossroadsLayout
+        let approachRoadClearing = layout.verticalRoadRect.insetBy(dx: -1.1, dy: -1.5)
+        let mainRoadClearing = layout.horizontalRoadRect.insetBy(dx: -1.4, dy: -1.8)
 
         addHorizontalTreeBand(
             startX: layout.worldRect.minX + (GameConstants.treeSpacing / 2),
@@ -567,21 +591,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             endX: layout.worldRect.maxX - (GameConstants.treeSpacing / 2),
             frontY: layout.movementRect.minY - (GameConstants.frontTreeSize * 0.3),
             depthDirection: -1,
-            variationOffset: 8_000
+            variationOffset: 8_000,
+            clearings: [approachRoadClearing]
         )
         addVerticalTreeBand(
             startY: layout.worldRect.minY + (GameConstants.treeSpacing / 2),
             endY: layout.worldRect.maxY - (GameConstants.treeSpacing / 2),
             frontX: layout.movementRect.minX - (GameConstants.frontTreeSize * 0.3),
             depthDirection: -1,
-            variationOffset: 9_000
+            variationOffset: 9_000,
+            clearings: [mainRoadClearing]
         )
         addVerticalTreeBand(
             startY: layout.worldRect.minY + (GameConstants.treeSpacing / 2),
             endY: layout.worldRect.maxY - (GameConstants.treeSpacing / 2),
             frontX: layout.movementRect.maxX + (GameConstants.frontTreeSize * 0.3),
             depthDirection: 1,
-            variationOffset: 10_000
+            variationOffset: 10_000,
+            clearings: [mainRoadClearing]
         )
     }
 
@@ -1103,21 +1130,37 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func updateAreaTransitionIfNeeded() {
-        guard currentArea == .homestead, !areaTransitionPending else {
+        guard !areaTransitionPending else {
             return
         }
 
-        let exitThreshold = worldLayout.movementRect.maxY - (GameConstants.playerRadius + 0.1)
-        guard
-            worldFocusPoint.y >= exitThreshold,
-            worldLayout.roadCorridorRect.insetBy(dx: 0.15, dy: 0).contains(worldFocusPoint)
-        else {
-            return
-        }
+        switch currentArea {
+        case .homestead:
+            let exitThreshold = worldLayout.movementRect.maxY - (GameConstants.playerRadius + 0.1)
+            guard
+                worldFocusPoint.y >= exitThreshold,
+                worldLayout.roadCorridorRect.insetBy(dx: 0.15, dy: 0).contains(worldFocusPoint)
+            else {
+                return
+            }
 
-        areaTransitionPending = true
-        playerNode.setMovementState(.idle)
-        onNorthRoadExitReached?()
+            areaTransitionPending = true
+            playerNode.setMovementState(.idle)
+            onNorthRoadExitReached?()
+        case .crossroads:
+            let layout = GameConstants.crossroadsLayout
+            let exitThreshold = layout.movementRect.minY + (GameConstants.playerRadius + 0.1)
+            guard
+                worldFocusPoint.y <= exitThreshold,
+                layout.verticalRoadRect.insetBy(dx: 0.2, dy: 0).contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            areaTransitionPending = true
+            playerNode.setMovementState(.idle)
+            onSouthRoadExitReached?()
+        }
     }
 
     private func shouldOpenDoor(openingRect: CGRect, current: CGPoint, proposed: CGPoint) -> Bool {
