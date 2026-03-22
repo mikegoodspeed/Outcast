@@ -944,27 +944,100 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         let layout = GameConstants.crossroadsLayout
+        let pedestrianCrossing = layout.horizontalRoadRect.insetBy(dx: 0, dy: -GameConstants.playerRadius * 0.4)
+        let pedestrianX = pedestrianCrossing.contains(worldFocusPoint) ? worldFocusPoint.x : nil
+
+        updateTrafficLane(
+            indices: trafficCars.indices
+                .filter { trafficCars[$0].direction > 0 }
+                .sorted { trafficCars[$0].x > trafficCars[$1].x },
+            direction: 1,
+            pedestrianX: pedestrianX,
+            deltaTime: deltaTime,
+            layout: layout
+        )
+        updateTrafficLane(
+            indices: trafficCars.indices
+                .filter { trafficCars[$0].direction < 0 }
+                .sorted { trafficCars[$0].x < trafficCars[$1].x },
+            direction: -1,
+            pedestrianX: pedestrianX,
+            deltaTime: deltaTime,
+            layout: layout
+        )
 
         for index in trafficCars.indices {
-            trafficCars[index].x += trafficCars[index].direction * trafficCars[index].speed * deltaTime
-
-            if
-                trafficCars[index].direction > 0,
-                trafficCars[index].x - trafficCars[index].halfLength > layout.trafficWrapRange.upperBound
-            {
-                trafficCars[index].x = layout.trafficWrapRange.lowerBound - trafficCars[index].halfLength
-            } else if
-                trafficCars[index].direction < 0,
-                trafficCars[index].x + trafficCars[index].halfLength < layout.trafficWrapRange.lowerBound
-            {
-                trafficCars[index].x = layout.trafficWrapRange.upperBound + trafficCars[index].halfLength
-            }
-
             trafficCars[index].node.position = position3D(
                 for: CGPoint(x: trafficCars[index].x, y: trafficCars[index].laneY),
                 elevation: 0.05
             )
             trafficCars[index].node.eulerAngles.y = trafficCars[index].direction > 0 ? 0 : .pi
+        }
+    }
+
+    private func updateTrafficLane(
+        indices: [Int],
+        direction: CGFloat,
+        pedestrianX: CGFloat?,
+        deltaTime: TimeInterval,
+        layout: CrossroadsLayout
+    ) {
+        var leaderCenterX: CGFloat?
+        var leaderHalfLength: CGFloat?
+
+        for index in indices {
+            let car = trafficCars[index]
+            var proposedX = car.x + (car.direction * car.speed * deltaTime)
+
+            if let pedestrianX {
+                if direction > 0, car.x < pedestrianX {
+                    let stopCenterX = pedestrianX
+                        - GameConstants.playerRadius
+                        - GameConstants.trafficPedestrianYieldGap
+                        - car.halfLength
+                    proposedX = min(proposedX, stopCenterX)
+                } else if direction < 0, car.x > pedestrianX {
+                    let stopCenterX = pedestrianX
+                        + GameConstants.playerRadius
+                        + GameConstants.trafficPedestrianYieldGap
+                        + car.halfLength
+                    proposedX = max(proposedX, stopCenterX)
+                }
+            }
+
+            if let leaderCenterX, let leaderHalfLength {
+                let followingDistance = leaderHalfLength + car.halfLength + GameConstants.trafficCarFollowingGap
+                if direction > 0 {
+                    proposedX = min(proposedX, leaderCenterX - followingDistance)
+                } else {
+                    proposedX = max(proposedX, leaderCenterX + followingDistance)
+                }
+            }
+
+            var wrapped = false
+            if
+                direction > 0,
+                proposedX - car.halfLength > layout.trafficWrapRange.upperBound
+            {
+                proposedX = layout.trafficWrapRange.lowerBound - car.halfLength
+                wrapped = true
+            } else if
+                direction < 0,
+                proposedX + car.halfLength < layout.trafficWrapRange.lowerBound
+            {
+                proposedX = layout.trafficWrapRange.upperBound + car.halfLength
+                wrapped = true
+            }
+
+            trafficCars[index].x = proposedX
+
+            if wrapped {
+                leaderCenterX = nil
+                leaderHalfLength = nil
+            } else {
+                leaderCenterX = proposedX
+                leaderHalfLength = car.halfLength
+            }
         }
     }
 

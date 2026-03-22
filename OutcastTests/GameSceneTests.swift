@@ -398,6 +398,53 @@ final class GameSceneTests: XCTestCase {
         XCTAssertNotEqual(initialXPositions, movedXPositions)
     }
 
+    func testTrafficCarsStopWhilePlayerStandsInRoad() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+        let layout = GameConstants.crossroadsLayout
+
+        gameScene.completeNorthRoadTransition()
+
+        advance(gameScene, renderer: renderer, frames: 0...28, input: CGVector(dx: 0, dy: 1))
+        advance(gameScene, renderer: renderer, frames: 29...170, input: .zero)
+
+        let settledCars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+        let settledEastboundLeadX = try XCTUnwrap(
+            settledCars
+                .filter { abs(CGFloat(-$0.position.z) - layout.trafficLaneYs[0]) < 0.001 }
+                .map { CGFloat($0.position.x) }
+                .max()
+        )
+        let settledWestboundLeadX = try XCTUnwrap(
+            settledCars
+                .filter { abs(CGFloat(-$0.position.z) - layout.trafficLaneYs[1]) < 0.001 }
+                .map { CGFloat($0.position.x) }
+                .min()
+        )
+
+        advance(gameScene, renderer: renderer, frames: 171...230, input: .zero)
+
+        let stoppedCars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+        let stoppedEastboundLeadX = try XCTUnwrap(
+            stoppedCars
+                .filter { abs(CGFloat(-$0.position.z) - layout.trafficLaneYs[0]) < 0.001 }
+                .map { CGFloat($0.position.x) }
+                .max()
+        )
+        let stoppedWestboundLeadX = try XCTUnwrap(
+            stoppedCars
+                .filter { abs(CGFloat(-$0.position.z) - layout.trafficLaneYs[1]) < 0.001 }
+                .map { CGFloat($0.position.x) }
+                .min()
+        )
+
+        XCTAssertLessThan(stoppedEastboundLeadX, 0)
+        XCTAssertGreaterThan(stoppedWestboundLeadX, 0)
+        XCTAssertEqual(stoppedEastboundLeadX, settledEastboundLeadX, accuracy: 0.001)
+        XCTAssertEqual(stoppedWestboundLeadX, settledWestboundLeadX, accuracy: 0.001)
+    }
+
     private func allNodes(in rootNode: SCNNode) -> [SCNNode] {
         [rootNode] + rootNode.childNodes.flatMap(allNodes(in:))
     }

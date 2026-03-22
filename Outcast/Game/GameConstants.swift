@@ -214,4 +214,6 @@ enum GameConstants {
     static let areaTransitionFadeDuration: TimeInterval = 0.42
     static let trafficCarBaseSpeed: CGFloat = 8.2
     static let trafficCarMaxWidth: CGFloat = 1.76
+    static let trafficPedestrianYieldGap: CGFloat = 0.78
+    static let trafficCarFollowingGap: CGFloat = 0.92
 }
