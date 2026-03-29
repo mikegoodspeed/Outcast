@@ -1198,18 +1198,26 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
 
     private func finishAreaTransition(transition: @escaping () -> Void) {
         transition()
-        UIView.animate(
-            withDuration: GameConstants.areaTransitionFadeDuration,
-            animations: {
-                self.sleepFadeView.alpha = 0
-            },
-            completion: { _ in
-                self.sleepFadeView.isHidden = true
-                self.areControlsLocked = false
-                self.refreshControlState()
-                self.becomeFirstResponder()
+        gameView.prepare([gameScene.scene.rootNode]) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else {
+                    return
+                }
+
+                UIView.animate(
+                    withDuration: GameConstants.areaTransitionFadeDuration,
+                    animations: {
+                        self.sleepFadeView.alpha = 0
+                    },
+                    completion: { _ in
+                        self.sleepFadeView.isHidden = true
+                        self.areControlsLocked = false
+                        self.refreshControlState()
+                        self.becomeFirstResponder()
+                    }
+                )
             }
-        )
+        }
     }
 
     @objc

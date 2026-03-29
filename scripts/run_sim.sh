@@ -21,3 +21,4 @@ xcodebuild \
 
 xcrun simctl install booted "$APP_PATH"
 xcrun simctl launch booted com.mikegoodspeed.Outcast
+open -a Simulator

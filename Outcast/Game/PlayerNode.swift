@@ -101,12 +101,12 @@ final class PlayerNode: SCNNode {
 
         rigNode.position = SCNVector3(
             0,
-            standingBaseHeight + (standingBaseHeight * 0.2 * lie),
-            Float(-0.12) * lie
+            standingBaseHeight + (standingBaseHeight * 0.78 * lie),
+            standingBaseHeight * 1.97 * lie
         )
         rigNode.eulerAngles.y *= (1 - lie)
         rigNode.eulerAngles.x = -(.pi / 2) * lie
-        rigNode.eulerAngles.z = -0.16 * lie
+        rigNode.eulerAngles.z = -0.06 * lie
         leftArmPivot.eulerAngles = SCNVector3(0.48 * lie, 0, -0.24 * lie)
         rightArmPivot.eulerAngles = SCNVector3(0.44 * lie, 0, 0.2 * lie)
         leftLegPivot.eulerAngles = SCNVector3(-0.08 * lie, 0, 0.05 * lie)

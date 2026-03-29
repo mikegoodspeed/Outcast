@@ -100,7 +100,7 @@ struct HouseLayout: Equatable {
 
     var bedRect: CGRect {
         let bedWidth = interiorRect.width * 0.28
-        let bedLength = interiorRect.height * 0.4
+        let bedLength = interiorRect.height * 0.65
         let cornerInset = exteriorWallThickness * 0.85
 
         return CGRect(
@@ -125,7 +125,7 @@ struct HouseLayout: Equatable {
     var bedSleepPoint: CGPoint {
         CGPoint(
             x: bedRect.midX,
-            y: bedRect.minY + (bedRect.height * 0.42)
+            y: bedRect.minY + (bedRect.height * 0.45)
         )
     }
 }
