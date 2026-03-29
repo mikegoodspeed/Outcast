@@ -68,6 +68,19 @@ final class GameSceneTests: XCTestCase {
         XCTAssertTrue(material.normal.contents is UIImage)
     }
 
+    func testSpawningAtClearNewsLoadsTraffic3InsideBuilding() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.spawn(at: .clearNews)
+
+        let building = gameScene.scene.rootNode.childNode(withName: "clearNewsBuilding", recursively: true)
+        let house = gameScene.scene.rootNode.childNode(withName: "house", recursively: true)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
+        XCTAssertNotNil(building)
+        XCTAssertNil(house)
+    }
+
     func testHomesteadAndCrossroadsRoadsSharePavedSurfaceColor() throws {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
         let northRoad = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "northRoad", recursively: true))
@@ -401,23 +414,64 @@ final class GameSceneTests: XCTestCase {
         let roof = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsRoof", recursively: true))
         let sign = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsSign", recursively: true))
         let door = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsDoor", recursively: true))
+        let counter = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsCounter", recursively: true))
+        let clerk = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsClerk", recursively: true))
+        let elevatorRoof = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsElevatorRoof", recursively: true))
+        let elevatorLeftDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsElevatorLeftDoor", recursively: true))
+        let elevatorRightDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsElevatorRightDoor", recursively: true))
+        let elevatorWalls = allNodes(in: building).filter { $0.name?.hasPrefix("clearNewsElevatorWall") == true }
         let walls = allNodes(in: building).filter { $0.name?.hasPrefix("clearNewsWall") == true }
         let wallColor = try XCTUnwrap(walls.first?.geometry?.firstMaterial?.diffuse.contents as? UIColor)
 
         XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
         XCTAssertEqual(walls.count, GameConstants.clearNewsBuildingLayout.wallRects.count)
+        XCTAssertEqual(elevatorWalls.count, GameConstants.clearNewsElevatorLayout.wallRects.count)
         XCTAssertEqual(CGFloat(building.position.x), 0, accuracy: 0.001)
         XCTAssertEqual(CGFloat(building.position.z), 0, accuracy: 0.001)
         XCTAssertNotNil(floor.geometry as? SCNBox)
         XCTAssertNotNil(roof.geometry as? SCNBox)
         XCTAssertNotNil(sign.geometry as? SCNPlane)
         XCTAssertNotNil(door.geometry as? SCNBox)
+        XCTAssertNotNil(counter.geometry as? SCNBox)
+        XCTAssertNotNil(elevatorRoof.geometry as? SCNBox)
+        XCTAssertNotNil(elevatorLeftDoor.geometry as? SCNBox)
+        XCTAssertNotNil(elevatorRightDoor.geometry as? SCNBox)
+        XCTAssertTrue(clerk is PlayerNode)
+        XCTAssertEqual(CGFloat(clerk.position.x), CGFloat(counter.position.x), accuracy: 0.001)
+        XCTAssertGreaterThan(CGFloat(counter.position.z), CGFloat(clerk.position.z))
+        XCTAssertGreaterThan(CGFloat(counter.position.x), GameConstants.clearNewsBuildingLayout.interiorRect.minX)
+        XCTAssertGreaterThan(CGFloat(elevatorLeftDoor.position.x), CGFloat(counter.position.x))
         XCTAssertLessThan(CGFloat(sign.position.y), CGFloat(roof.position.y))
         XCTAssertGreaterThan(CGFloat(sign.position.z), CGFloat(roof.position.z))
         assertColorsEqual(
             wallColor,
             UIColor(red: 0.2, green: 0.56, blue: 0.26, alpha: 1.0)
         )
+    }
+
+    func testPlayerCanEnterClearNewsAndHideRoof() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        let roof = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsRoof", recursively: true))
+        let doorPivot = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsDoorPivot", recursively: true))
+
+        XCTAssertFalse(roof.isHidden)
+        XCTAssertEqual(doorPivot.eulerAngles.y, 0, accuracy: 0.001)
+
+        advance(gameScene, renderer: renderer, frames: 0...30, input: CGVector(dx: -1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 31...62, input: CGVector(dx: 0, dy: 1))
+
+        XCTAssertNotEqual(doorPivot.eulerAngles.y, 0, accuracy: 0.001)
+
+        advance(gameScene, renderer: renderer, frames: 63...94, input: CGVector(dx: 0, dy: 1))
+
+        XCTAssertTrue(roof.isHidden)
     }
 
     func testCrossroadsApproachRoadStopsAtTrafficRoadEdge() throws {

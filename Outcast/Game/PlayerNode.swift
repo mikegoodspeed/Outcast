@@ -3,6 +3,24 @@ import SceneKit
 import UIKit
 
 final class PlayerNode: SCNNode {
+    struct Outfit {
+        let shirtColor: UIColor
+        let pantsColor: UIColor
+        let shoesColor: UIColor
+
+        static let defaultPlayer = Outfit(
+            shirtColor: UIColor(red: 0.74, green: 0.34, blue: 0.23, alpha: 1.0),
+            pantsColor: UIColor(red: 0.23, green: 0.33, blue: 0.53, alpha: 1.0),
+            shoesColor: UIColor(red: 0.85, green: 0.88, blue: 0.93, alpha: 1.0)
+        )
+
+        static let clearNewsClerk = Outfit(
+            shirtColor: UIColor(red: 0.21, green: 0.44, blue: 0.36, alpha: 1.0),
+            pantsColor: UIColor(red: 0.18, green: 0.2, blue: 0.24, alpha: 1.0),
+            shoesColor: UIColor(red: 0.49, green: 0.51, blue: 0.54, alpha: 1.0)
+        )
+    }
+
     enum MovementState {
         case idle
         case walking
@@ -26,12 +44,12 @@ final class PlayerNode: SCNNode {
     private let standingBaseHeight: Float
     private var movementState: MovementState = .idle
 
-    init(radius: CGFloat) {
+    init(radius: CGFloat, outfit: Outfit = .defaultPlayer) {
         shadowNode = SCNNode(geometry: SCNCylinder(radius: radius * 0.85, height: 0.02))
         standingBaseHeight = Float(radius * 1.08)
         super.init()
         name = "player"
-        buildModel(radius: radius)
+        buildModel(radius: radius, outfit: outfit)
         resetLimbPose()
     }
 
@@ -97,24 +115,24 @@ final class PlayerNode: SCNNode {
         shadowNode.opacity = 1 - (CGFloat(lie) * 0.92)
     }
 
-    private func buildModel(radius: CGFloat) {
+    private func buildModel(radius: CGFloat, outfit: Outfit) {
         let skin = Self.material(
             diffuse: UIColor(red: 0.95, green: 0.8, blue: 0.69, alpha: 1.0),
             metalness: 0.0,
             roughness: 0.88
         )
         let shirt = Self.material(
-            diffuse: UIColor(red: 0.74, green: 0.34, blue: 0.23, alpha: 1.0),
+            diffuse: outfit.shirtColor,
             metalness: 0.0,
             roughness: 0.78
         )
         let pants = Self.material(
-            diffuse: UIColor(red: 0.23, green: 0.33, blue: 0.53, alpha: 1.0),
+            diffuse: outfit.pantsColor,
             metalness: 0.0,
             roughness: 0.8
         )
         let shoes = Self.material(
-            diffuse: UIColor(red: 0.85, green: 0.88, blue: 0.93, alpha: 1.0),
+            diffuse: outfit.shoesColor,
             metalness: 0.0,
             roughness: 0.6
         )

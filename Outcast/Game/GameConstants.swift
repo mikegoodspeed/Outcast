@@ -206,6 +206,17 @@ struct ShellBuildingLayout: Equatable {
     var blockedRects: [CGRect] {
         wallRects + [frontDoorRect]
     }
+
+    func blockedRects(frontDoorOpen: Bool) -> [CGRect] {
+        if frontDoorOpen {
+            return wallRects
+        }
+        return blockedRects
+    }
+
+    func containsInterior(_ point: CGPoint) -> Bool {
+        interiorRect.contains(point)
+    }
 }
 
 enum GameConstants {
@@ -278,6 +289,44 @@ enum GameConstants {
         frontDoorWidth: 3.4
     )
     static let clearNewsWallHeight: CGFloat = 6.2
+    static let clearNewsFloorHeight: CGFloat = 0.08
+    static let clearNewsSpawnPoint = CGPoint(
+        x: clearNewsBuildingLayout.center.x,
+        y: clearNewsBuildingLayout.outerRect.minY + 2.4
+    )
+    static let clearNewsElevatorLayout: ShellBuildingLayout = {
+        let interiorRect = clearNewsBuildingLayout.interiorRect
+        let outerRect = CGRect(
+            x: interiorRect.maxX - 4.4,
+            y: interiorRect.maxY - 3.8,
+            width: 4.4,
+            height: 3.8
+        )
+        return ShellBuildingLayout(
+            outerRect: outerRect,
+            wallThickness: 0.24,
+            frontDoorWidth: 2.5
+        )
+    }()
+    static let clearNewsCounterRect: CGRect = {
+        let interiorRect = clearNewsBuildingLayout.interiorRect
+        let leftGap: CGFloat = 1.35
+        let backWalkwayDepth: CGFloat = 1.7
+        let counterDepth: CGFloat = 1.15
+        let originX = interiorRect.minX + leftGap
+        let originY = interiorRect.maxY - backWalkwayDepth - counterDepth
+        return CGRect(
+            x: originX,
+            y: originY,
+            width: clearNewsElevatorLayout.outerRect.minX - originX,
+            height: counterDepth
+        )
+    }()
+    static let clearNewsClerkRadius: CGFloat = playerRadius * 0.9
+    static let clearNewsClerkPoint = CGPoint(
+        x: clearNewsCounterRect.midX,
+        y: clearNewsCounterRect.maxY + clearNewsClerkRadius + 0.18
+    )
     static let houseWidth: CGFloat = 6.8
     static let houseDepth: CGFloat = 5.6
     static let houseWallHeight: CGFloat = 3.9

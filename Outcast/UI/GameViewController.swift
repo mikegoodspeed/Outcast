@@ -6,12 +6,17 @@ final class GameViewController: UIViewController {
     private let gameView = SCNView()
     private let joystickView = VirtualJoystickView()
     private let actionButton = UIButton(type: .custom)
+    private let spawnPromptView = UIView()
+    private let spawnPromptLabel = UILabel()
+    private let spawnHomeButton = UIButton(type: .system)
+    private let spawnClearNewsButton = UIButton(type: .system)
     private let bedPromptView = UIView()
     private let bedPromptLabel = UILabel()
     private let bedPromptConfirmButton = UIButton(type: .system)
     private let bedPromptCancelButton = UIButton(type: .system)
     private let sleepFadeView = UIView()
     private lazy var gameScene = GameScene(size: view.bounds.size)
+    private var isSpawnPromptVisible = true
     private var isBedPromptVisible = false
     private var areControlsLocked = false
 
@@ -22,9 +27,11 @@ final class GameViewController: UIViewController {
         configureGameView()
         configureJoystick()
         configureActionButton()
+        configureSpawnPrompt()
         configureBedPrompt()
         configureSleepFadeView()
         configureScene()
+        refreshControlState()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -136,9 +143,74 @@ final class GameViewController: UIViewController {
         ])
     }
 
+    private func configureSpawnPrompt() {
+        spawnPromptView.translatesAutoresizingMaskIntoConstraints = false
+        spawnPromptView.backgroundColor = UIColor(white: 0.12, alpha: 0.96)
+        spawnPromptView.layer.cornerRadius = 24
+        spawnPromptView.layer.borderWidth = 1
+        spawnPromptView.layer.borderColor = UIColor(white: 1.0, alpha: 0.08).cgColor
+        spawnPromptView.accessibilityIdentifier = "spawnPrompt"
+
+        spawnPromptLabel.translatesAutoresizingMaskIntoConstraints = false
+        spawnPromptLabel.text = "Spawn where?"
+        spawnPromptLabel.textColor = .white
+        spawnPromptLabel.font = .systemFont(ofSize: 24, weight: .bold)
+        spawnPromptLabel.textAlignment = .center
+        spawnPromptLabel.accessibilityIdentifier = "spawnPromptText"
+
+        configureSpawnButton(
+            spawnHomeButton,
+            title: "Home",
+            accessibilityIdentifier: "spawnHomeButton",
+            action: #selector(handleSpawnHomeButtonTap)
+        )
+        configureSpawnButton(
+            spawnClearNewsButton,
+            title: "Clear News",
+            accessibilityIdentifier: "spawnClearNewsButton",
+            action: #selector(handleSpawnClearNewsButtonTap)
+        )
+
+        let buttonStack = UIStackView(arrangedSubviews: [spawnHomeButton, spawnClearNewsButton])
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        buttonStack.axis = .vertical
+        buttonStack.spacing = 14
+
+        let contentStack = UIStackView(arrangedSubviews: [spawnPromptLabel, buttonStack])
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = 20
+        contentStack.alignment = .center
+
+        view.addSubview(spawnPromptView)
+        spawnPromptView.addSubview(contentStack)
+
+        NSLayoutConstraint.activate([
+            spawnPromptView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            spawnPromptView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            spawnPromptView.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 28),
+            spawnPromptView.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -28),
+
+            contentStack.leadingAnchor.constraint(equalTo: spawnPromptView.leadingAnchor, constant: 24),
+            contentStack.trailingAnchor.constraint(equalTo: spawnPromptView.trailingAnchor, constant: -24),
+            contentStack.topAnchor.constraint(equalTo: spawnPromptView.topAnchor, constant: 24),
+            contentStack.bottomAnchor.constraint(equalTo: spawnPromptView.bottomAnchor, constant: -24),
+
+            spawnHomeButton.widthAnchor.constraint(equalToConstant: 220),
+            spawnClearNewsButton.widthAnchor.constraint(equalToConstant: 220),
+            spawnHomeButton.heightAnchor.constraint(equalToConstant: 52),
+            spawnClearNewsButton.heightAnchor.constraint(equalToConstant: 52)
+        ])
+    }
+
     private func configureScene() {
         gameScene.movementInputProvider = { [weak self] in
-            guard let self, !self.isBedPromptVisible, !self.areControlsLocked else {
+            guard
+                let self,
+                !self.isSpawnPromptVisible,
+                !self.isBedPromptVisible,
+                !self.areControlsLocked
+            else {
                 return .zero
             }
             return self.inputController.currentMovementVector()
@@ -192,6 +264,11 @@ final class GameViewController: UIViewController {
             }
 
             if areControlsLocked {
+                handled = true
+                continue
+            }
+
+            if isSpawnPromptVisible {
                 handled = true
                 continue
             }
@@ -339,6 +416,24 @@ final class GameViewController: UIViewController {
         button.addTarget(self, action: action, for: .touchUpInside)
     }
 
+    private func configureSpawnButton(
+        _ button: UIButton,
+        title: String,
+        accessibilityIdentifier: String,
+        action: Selector
+    ) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 20, weight: .semibold)
+        button.backgroundColor = UIColor(white: 1.0, alpha: 0.1)
+        button.layer.cornerRadius = 16
+        button.layer.borderWidth = 1
+        button.layer.borderColor = UIColor(white: 1.0, alpha: 0.14).cgColor
+        button.accessibilityIdentifier = accessibilityIdentifier
+        button.addTarget(self, action: action, for: .touchUpInside)
+    }
+
     private func handleInteractionAction(_ action: InteractionKeyAction) {
         guard !areControlsLocked else {
             return
@@ -422,9 +517,11 @@ final class GameViewController: UIViewController {
     }
 
     private func refreshControlState() {
-        joystickView.isUserInteractionEnabled = !isBedPromptVisible && !areControlsLocked
-        actionButton.isHidden = areControlsLocked
+        joystickView.isUserInteractionEnabled = !isSpawnPromptVisible && !isBedPromptVisible && !areControlsLocked
+        joystickView.alpha = isSpawnPromptVisible ? 0.35 : 1
+        actionButton.isHidden = areControlsLocked || isSpawnPromptVisible
         actionButton.alpha = isBedPromptVisible ? 0.45 : 1
+        spawnPromptView.isHidden = !isSpawnPromptVisible
     }
 
     private func lockControlsForTransition() {
@@ -504,6 +601,26 @@ final class GameViewController: UIViewController {
     @objc
     private func handleBedPromptCancelButtonTap() {
         setBedPromptVisible(false)
+    }
+
+    @objc
+    private func handleSpawnHomeButtonTap() {
+        chooseSpawnLocation(.home)
+    }
+
+    @objc
+    private func handleSpawnClearNewsButtonTap() {
+        chooseSpawnLocation(.clearNews)
+    }
+
+    private func chooseSpawnLocation(_ location: GameScene.SpawnLocation) {
+        isSpawnPromptVisible = false
+        areControlsLocked = false
+        inputController.reset()
+        joystickView.resetControl()
+        gameScene.spawn(at: location)
+        refreshControlState()
+        becomeFirstResponder()
     }
 }
 

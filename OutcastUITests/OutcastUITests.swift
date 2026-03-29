@@ -9,6 +9,12 @@ final class OutcastUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
+        XCTAssertTrue(app.otherElements["spawnPrompt"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["spawnHomeButton"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["spawnClearNewsButton"].waitForExistence(timeout: 5))
+
+        app.buttons["spawnHomeButton"].tap()
+
         XCTAssertTrue(app.otherElements["gameView"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.otherElements["virtualJoystick"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["actionButtonX"].waitForExistence(timeout: 5))
