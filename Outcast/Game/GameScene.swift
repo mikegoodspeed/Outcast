@@ -5,7 +5,23 @@ import UIKit
 final class GameScene: NSObject, SCNSceneRendererDelegate {
     private enum Area {
         case homestead
-        case crossroads
+        case traffic1
+        case traffic2
+        case traffic3
+
+        var isTrafficArea: Bool {
+            switch self {
+            case .homestead:
+                return false
+            case .traffic1, .traffic2, .traffic3:
+                return true
+            }
+        }
+    }
+
+    private enum RoadOrientation {
+        case horizontal
+        case vertical
     }
 
     private struct BedSequenceState {
@@ -39,6 +55,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var onBedSequenceFinished: (() -> Void)?
     var onNorthRoadExitReached: (() -> Void)?
     var onSouthRoadExitReached: (() -> Void)?
+    var onWestRoadExitReached: (() -> Void)?
+    var onEastRoadExitReached: (() -> Void)?
     let scene = SCNScene()
     var isPlayerNearBedForInteraction: Bool {
         guard currentArea == .homestead else {
@@ -74,8 +92,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         switch currentArea {
         case .homestead:
             return "home"
-        case .crossroads:
-            return "crossroads"
+        case .traffic1:
+            return "traffic1"
+        case .traffic2:
+            return "traffic2"
+        case .traffic3:
+            return "traffic3"
         }
     }
 
@@ -108,8 +130,17 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         switch currentArea {
         case .homestead:
             return worldLayout.movementRect
-        case .crossroads:
-            return GameConstants.crossroadsLayout.movementRect
+        case .traffic1, .traffic2, .traffic3:
+            return activeTrafficLayout.movementRect
+        }
+    }
+
+    private var activeTrafficLayout: CrossroadsLayout {
+        switch currentArea {
+        case .homestead, .traffic1, .traffic2:
+            return GameConstants.crossroadsLayout
+        case .traffic3:
+            return GameConstants.traffic3Layout
         }
     }
 
@@ -117,8 +148,12 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         switch currentArea {
         case .homestead:
             return .zero
-        case .crossroads:
+        case .traffic1:
             return GameConstants.crossroadsLayout.spawnPoint
+        case .traffic2:
+            return GameConstants.crossroadsLayout.eastTransitionPoint
+        case .traffic3:
+            return GameConstants.traffic3Layout.eastTransitionPoint
         }
     }
 
@@ -142,65 +177,61 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return
         }
 
-        let destinationPoint = GameConstants.crossroadsLayout.spawnPoint
-        let destinationHeading = CGVector(dx: 0, dy: 1)
-        currentArea = .crossroads
-        areaTransitionPending = false
-        isFrontDoorOpen = false
-        sleepReturnPoint = nil
-        bedSequence = nil
-        lastFacingVector = destinationHeading
-        lastUpdateTime = nil
-
-        if var parkedCarState, parkedCarState.isOccupied {
-            parkedCarState.area = .crossroads
-            parkedCarState.point = destinationPoint
-            parkedCarState.headingVector = destinationHeading
-            self.parkedCarState = parkedCarState
-            worldFocusPoint = destinationPoint
-        } else {
-            worldFocusPoint = destinationPoint
-        }
-
-        playerNode.setMovementState(.idle)
-        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
-        playerNode.setFacing(vector: lastFacingVector, animated: false)
-        playerNode.isHidden = parkedCarState?.isOccupied == true
-
-        configureWorld()
+        completeTransition(
+            to: .traffic1,
+            destinationPoint: GameConstants.crossroadsLayout.spawnPoint,
+            heading: CGVector(dx: 0, dy: 1)
+        )
     }
 
     func completeSouthRoadTransition() {
-        guard currentArea == .crossroads else {
+        guard currentArea == .traffic1 else {
             return
         }
 
-        let destinationPoint = worldLayout.northRoadReturnPoint
-        let destinationHeading = CGVector(dx: 0, dy: -1)
-        currentArea = .homestead
-        areaTransitionPending = false
-        isFrontDoorOpen = false
-        sleepReturnPoint = nil
-        bedSequence = nil
-        lastFacingVector = destinationHeading
-        lastUpdateTime = nil
+        completeTransition(
+            to: .homestead,
+            destinationPoint: worldLayout.northRoadReturnPoint,
+            heading: CGVector(dx: 0, dy: -1)
+        )
+    }
 
-        if var parkedCarState, parkedCarState.isOccupied {
-            parkedCarState.area = .homestead
-            parkedCarState.point = destinationPoint
-            parkedCarState.headingVector = destinationHeading
-            self.parkedCarState = parkedCarState
-            worldFocusPoint = destinationPoint
-        } else {
-            worldFocusPoint = destinationPoint
+    func completeWestRoadTransition() {
+        let destinationArea: Area
+        switch currentArea {
+        case .traffic1:
+            destinationArea = .traffic2
+        case .traffic2:
+            destinationArea = .traffic3
+        case .homestead, .traffic3:
+            return
         }
 
-        playerNode.setMovementState(.idle)
-        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
-        playerNode.setFacing(vector: lastFacingVector, animated: false)
-        playerNode.isHidden = parkedCarState?.isOccupied == true
+        completeTransition(
+            to: destinationArea,
+            destinationPoint: destinationArea == .traffic3
+                ? GameConstants.traffic3Layout.eastTransitionPoint
+                : GameConstants.crossroadsLayout.eastTransitionPoint,
+            heading: CGVector(dx: -1, dy: 0)
+        )
+    }
 
-        configureWorld()
+    func completeEastRoadTransition() {
+        let destinationArea: Area
+        switch currentArea {
+        case .traffic2:
+            destinationArea = .traffic1
+        case .traffic3:
+            destinationArea = .traffic2
+        case .homestead, .traffic1:
+            return
+        }
+
+        completeTransition(
+            to: destinationArea,
+            destinationPoint: GameConstants.crossroadsLayout.westTransitionPoint,
+            heading: CGVector(dx: 1, dy: 0)
+        )
     }
 
     @discardableResult
@@ -425,6 +456,33 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         resetDaylightCycle()
     }
 
+    private func completeTransition(to area: Area, destinationPoint: CGPoint, heading: CGVector) {
+        currentArea = area
+        areaTransitionPending = false
+        isFrontDoorOpen = false
+        sleepReturnPoint = nil
+        bedSequence = nil
+        lastFacingVector = heading
+        lastUpdateTime = nil
+
+        if var parkedCarState, parkedCarState.isOccupied {
+            parkedCarState.area = area
+            parkedCarState.point = destinationPoint
+            parkedCarState.headingVector = heading
+            self.parkedCarState = parkedCarState
+            worldFocusPoint = destinationPoint
+        } else {
+            worldFocusPoint = destinationPoint
+        }
+
+        playerNode.setMovementState(.idle)
+        playerNode.setSleepPose(lieProgress: 0, coverProgress: 0)
+        playerNode.setFacing(vector: lastFacingVector, animated: false)
+        playerNode.isHidden = parkedCarState?.isOccupied == true
+
+        configureWorld()
+    }
+
     private func configureWorld() {
         isFrontDoorOpen = false
         roomBounds = RoomBounds(rect: activeMovementRect, blockedRects: currentBlockedRects())
@@ -435,8 +493,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         switch currentArea {
         case .homestead:
             addHomesteadWorld()
-        case .crossroads:
-            addCrossroadsWorld()
+        case .traffic1:
+            addTrafficWorld(includeHomeRoad: true)
+        case .traffic2, .traffic3:
+            addTrafficWorld(includeHomeRoad: false)
         }
 
         refreshRoomBounds()
@@ -467,11 +527,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             )
         )
         ground.name = "worldGround"
-        ground.geometry?.firstMaterial = material(
-            diffuse: UIColor(red: 0.09, green: 0.12, blue: 0.14, alpha: 1.0),
-            roughness: 0.96
-        )
-        ground.geometry?.firstMaterial?.normal.contents = UIColor(red: 0.12, green: 0.14, blue: 0.15, alpha: 1.0)
+        ground.geometry?.firstMaterial = groundMaterial()
         ground.position = SCNVector3(
             Float(worldRect.midX),
             Float(-GameConstants.groundThickness / 2),
@@ -490,20 +546,24 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         ensureParkedCarForCurrentArea(defaultPoint: worldLayout.northRoadReturnPoint)
     }
 
-    private func addCrossroadsWorld() {
-        let crossroadsLayout = GameConstants.crossroadsLayout
-        addGround(in: crossroadsLayout.worldRect)
-        addFloorDetails(
-            in: crossroadsLayout.movementRect,
-            excludedRects: [
-                crossroadsLayout.verticalRoadRect.insetBy(dx: -0.55, dy: -0.25),
-                crossroadsLayout.horizontalRoadRect.insetBy(dx: -0.75, dy: -0.45)
-            ]
-        )
-        addCrossroadsRoadNetwork()
-        addCrossroadsTreeBands()
+    private func addTrafficWorld(includeHomeRoad: Bool) {
+        let layout = activeTrafficLayout
+        addGround(in: layout.worldRect)
+        var excludedRects = [layout.horizontalRoadRect.insetBy(dx: -0.75, dy: -0.45)]
+        if includeHomeRoad {
+            excludedRects.append(layout.verticalRoadRect.insetBy(dx: -0.55, dy: -0.25))
+        }
+        if currentArea == .traffic3 {
+            excludedRects.append(GameConstants.clearNewsBuildingLayout.outerRect.insetBy(dx: -0.4, dy: -0.4))
+        }
+        addFloorDetails(in: layout.movementRect, excludedRects: excludedRects)
+        addTrafficRoadNetwork(layout: layout, includeHomeRoad: includeHomeRoad)
+        if currentArea == .traffic3 {
+            addClearNewsBuilding()
+        }
+        addTrafficTreeBands(layout: layout, includeHomeRoad: includeHomeRoad)
         addTrafficCars()
-        ensureParkedCarForCurrentArea(defaultPoint: GameConstants.parkedCarPoint)
+        ensureParkedCarForCurrentArea(defaultPoint: GameConstants.parkedCarPoint(for: layout))
     }
 
     private func addSpawnHouse() {
@@ -515,129 +575,121 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func addHomesteadRoad() {
         let roadRect = worldLayout.roadSurfaceRect
-
-        let road = SCNNode(
-            geometry: SCNBox(
-                width: roadRect.width,
-                height: 0.04,
-                length: roadRect.height,
-                chamferRadius: 0.58
-            )
-        )
-        road.name = "northRoad"
-        road.geometry?.firstMaterial = material(
-            diffuse: UIColor(red: 0.26, green: 0.22, blue: 0.18, alpha: 1.0),
-            roughness: 0.96
-        )
-        road.position = position3D(
-            for: CGPoint(x: roadRect.midX, y: roadRect.midY),
+        addPavedRoad(
+            named: "northRoad",
+            rect: roadRect,
+            thickness: 0.04,
+            chamferRadius: 0.58,
+            orientation: .vertical,
             elevation: 0.021
         )
-        worldNode.addChildNode(road)
-
-        for offset in [-0.78, 0.78] {
-            let rut = SCNNode(
-                geometry: SCNBox(
-                    width: 0.56,
-                    height: 0.01,
-                    length: roadRect.height * 0.95,
-                    chamferRadius: 0.18
-                )
-            )
-            rut.geometry?.firstMaterial = material(
-                diffuse: UIColor(red: 0.18, green: 0.15, blue: 0.12, alpha: 1.0),
-                roughness: 0.98
-            )
-            rut.position = position3D(
-                for: CGPoint(x: roadRect.midX + CGFloat(offset), y: roadRect.midY),
-                elevation: 0.046
-            )
-            worldNode.addChildNode(rut)
-        }
     }
 
-    private func addCrossroadsRoadNetwork() {
-        let layout = GameConstants.crossroadsLayout
-
-        let approachRoad = SCNNode(
-            geometry: SCNBox(
-                width: layout.verticalRoadRect.width,
-                height: 0.04,
-                length: layout.verticalRoadRect.height,
-                chamferRadius: 0.46
+    private func addTrafficRoadNetwork(layout: CrossroadsLayout, includeHomeRoad: Bool) {
+        if includeHomeRoad {
+            addPavedRoad(
+                named: "crossroadsApproachRoad",
+                rect: layout.verticalRoadRect,
+                thickness: 0.04,
+                chamferRadius: 0.46,
+                orientation: .vertical,
+                elevation: 0.021
             )
-        )
-        approachRoad.name = "crossroadsApproachRoad"
-        approachRoad.geometry?.firstMaterial = material(
-            diffuse: UIColor(red: 0.25, green: 0.23, blue: 0.22, alpha: 1.0),
-            roughness: 0.95
-        )
-        approachRoad.position = position3D(
-            for: CGPoint(x: layout.verticalRoadRect.midX, y: layout.verticalRoadRect.midY),
-            elevation: 0.021
-        )
-        worldNode.addChildNode(approachRoad)
-
-        let mainRoad = SCNNode(
-            geometry: SCNBox(
-                width: layout.horizontalRoadRect.width,
-                height: 0.05,
-                length: layout.horizontalRoadRect.height,
-                chamferRadius: 0.54
-            )
-        )
-        mainRoad.name = "crossroadsMainRoad"
-        mainRoad.geometry?.firstMaterial = material(
-            diffuse: UIColor(red: 0.22, green: 0.21, blue: 0.2, alpha: 1.0),
-            roughness: 0.94
-        )
-        mainRoad.position = position3D(
-            for: CGPoint(x: layout.horizontalRoadRect.midX, y: layout.horizontalRoadRect.midY),
+        }
+        addPavedRoad(
+            named: "crossroadsMainRoad",
+            rect: layout.horizontalRoadRect,
+            thickness: 0.05,
+            chamferRadius: 0.54,
+            orientation: .horizontal,
             elevation: 0.022
         )
-        worldNode.addChildNode(mainRoad)
+    }
 
-        let edgeOffsets = [-3.9, 3.9]
-        for offset in edgeOffsets {
-            let edgeStripe = SCNNode(
+    private func addClearNewsBuilding() {
+        let layout = GameConstants.clearNewsBuildingLayout
+        let building = SCNNode()
+        building.name = "clearNewsBuilding"
+
+        let floor = SCNNode(
+            geometry: SCNBox(
+                width: layout.interiorRect.width,
+                height: 0.08,
+                length: layout.interiorRect.height,
+                chamferRadius: 0.14
+            )
+        )
+        floor.name = "clearNewsFloor"
+        floor.geometry?.firstMaterial = clearNewsFloorMaterial()
+        floor.position = position3D(for: layout.center, elevation: 0.04)
+        building.addChildNode(floor)
+
+        for (index, wallRect) in layout.wallRects.enumerated() {
+            let wall = SCNNode(
                 geometry: SCNBox(
-                    width: layout.horizontalRoadRect.width * 0.94,
-                    height: 0.008,
-                    length: 0.16,
-                    chamferRadius: 0.04
+                    width: wallRect.width,
+                    height: GameConstants.clearNewsWallHeight,
+                    length: wallRect.height,
+                    chamferRadius: 0.1
                 )
             )
-            edgeStripe.geometry?.firstMaterial = material(
-                diffuse: UIColor(red: 0.93, green: 0.93, blue: 0.9, alpha: 1.0),
-                roughness: 0.62
+            wall.name = "clearNewsWall\(index)"
+            wall.geometry?.firstMaterial = clearNewsWallMaterial()
+            wall.position = position3D(
+                for: CGPoint(x: wallRect.midX, y: wallRect.midY),
+                elevation: GameConstants.clearNewsWallHeight / 2
             )
-            edgeStripe.position = position3D(
-                for: CGPoint(x: layout.horizontalRoadRect.midX, y: layout.horizontalRoadRect.midY + CGFloat(offset)),
-                elevation: 0.05
-            )
-            worldNode.addChildNode(edgeStripe)
+            building.addChildNode(wall)
         }
 
-        for index in 0..<13 {
-            let stripe = SCNNode(
-                geometry: SCNBox(
-                    width: 1.95,
-                    height: 0.01,
-                    length: 0.2,
-                    chamferRadius: 0.05
-                )
+        let doorRect = layout.frontDoorRect
+        let door = SCNNode(
+            geometry: SCNBox(
+                width: doorRect.width * 0.92,
+                height: GameConstants.clearNewsWallHeight * 0.68,
+                length: 0.16,
+                chamferRadius: 0.08
             )
-            stripe.geometry?.firstMaterial = material(
-                diffuse: UIColor(red: 0.92, green: 0.89, blue: 0.7, alpha: 1.0),
-                roughness: 0.58
+        )
+        door.name = "clearNewsDoor"
+        door.geometry?.firstMaterial = clearNewsDoorMaterial()
+        door.position = position3D(
+            for: CGPoint(x: doorRect.midX, y: layout.outerRect.minY - 0.05),
+            elevation: (GameConstants.clearNewsWallHeight * 0.68) / 2
+        )
+        building.addChildNode(door)
+
+        let roof = SCNNode(
+            geometry: SCNBox(
+                width: layout.outerRect.width + 0.8,
+                height: 0.28,
+                length: layout.outerRect.height + 0.8,
+                chamferRadius: 0.2
             )
-            let x = layout.horizontalRoadRect.minX + 4.7 + (CGFloat(index) * 7.15)
-            stripe.position = position3D(
-                for: CGPoint(x: x, y: layout.horizontalRoadRect.midY),
-                elevation: 0.053
+        )
+        roof.name = "clearNewsRoof"
+        roof.geometry?.firstMaterial = clearNewsRoofMaterial()
+        roof.position = position3D(
+            for: layout.center,
+            elevation: GameConstants.clearNewsWallHeight + 0.14
+        )
+        building.addChildNode(roof)
+
+        let sign = SCNNode(
+            geometry: SCNPlane(
+                width: layout.outerRect.width * 0.68,
+                height: 2.5
             )
-            worldNode.addChildNode(stripe)
-        }
+        )
+        sign.name = "clearNewsSign"
+        sign.geometry?.firstMaterial = clearNewsSignMaterial()
+        sign.position = position3D(
+            for: CGPoint(x: layout.center.x, y: layout.outerRect.minY - 0.72),
+            elevation: GameConstants.clearNewsWallHeight - 1.35
+        )
+        building.addChildNode(sign)
+
+        worldNode.addChildNode(building)
     }
 
     private func addHomesteadTreeBands() {
@@ -699,8 +751,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         )
     }
 
-    private func addCrossroadsTreeBands() {
-        let layout = GameConstants.crossroadsLayout
+    private func addTrafficTreeBands(layout: CrossroadsLayout, includeHomeRoad: Bool) {
         let approachRoadClearing = layout.verticalRoadRect.insetBy(dx: -1.1, dy: -1.5)
         let mainRoadClearing = layout.horizontalRoadRect.insetBy(dx: -1.4, dy: -1.8)
 
@@ -717,7 +768,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             frontY: layout.movementRect.minY - (GameConstants.frontTreeSize * 0.3),
             depthDirection: -1,
             variationOffset: 8_000,
-            clearings: [approachRoadClearing]
+            clearings: includeHomeRoad ? [approachRoadClearing] : []
         )
         addVerticalTreeBand(
             startY: layout.worldRect.minY + (GameConstants.treeSpacing / 2),
@@ -945,7 +996,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func addTrafficCars() {
-        let layout = GameConstants.crossroadsLayout
+        let layout = activeTrafficLayout
         let colors: [UIColor] = [
             UIColor(red: 0.83, green: 0.24, blue: 0.22, alpha: 1.0),
             UIColor(red: 0.21, green: 0.49, blue: 0.82, alpha: 1.0),
@@ -991,7 +1042,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func ensureParkedCarForCurrentArea(defaultPoint: CGPoint) {
-        if parkedCarState == nil, currentArea == .crossroads {
+        if
+            currentArea.isTrafficArea,
+            parkedCarState == nil || (parkedCarState?.isOccupied == false && parkedCarState?.area != currentArea)
+        {
             let node = trafficCarNode(
                 styleIndex: 6,
                 bodyColor: UIColor(red: 0.78, green: 0.16, blue: 0.14, alpha: 1.0),
@@ -1003,7 +1057,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 node: node,
                 halfLength: GameConstants.parkedCarLength / 2,
                 halfWidth: GameConstants.parkedCarWidth / 2,
-                area: .crossroads,
+                area: currentArea,
                 point: defaultPoint,
                 headingVector: CGVector(dx: 0, dy: 1),
                 isOccupied: false
@@ -1175,11 +1229,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func updateTraffic(by deltaTime: TimeInterval) {
-        guard currentArea == .crossroads else {
+        guard currentArea.isTrafficArea else {
             return
         }
 
-        let layout = GameConstants.crossroadsLayout
+        let layout = activeTrafficLayout
         let obstacleRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
         let eastboundObstacleX = trafficLaneInteractionRect(
             laneY: layout.trafficLaneYs[0],
@@ -1298,9 +1352,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             + obstacleRadius
             + GameConstants.trafficPedestrianYieldGap
         return CGRect(
-            x: GameConstants.crossroadsLayout.horizontalRoadRect.minX,
+            x: activeTrafficLayout.horizontalRoadRect.minX,
             y: laneY - laneHalfHeight,
-            width: GameConstants.crossroadsLayout.horizontalRoadRect.width,
+            width: activeTrafficLayout.horizontalRoadRect.width,
             height: laneHalfHeight * 2
         )
     }
@@ -1446,8 +1500,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 ? [GameConstants.spawnHouseLayout.outerRect]
                 : GameConstants.spawnHouseLayout.blockedRects(frontDoorOpen: isFrontDoorOpen)
             baseBlockedRects = houseBlockedRects + worldLayout.blockedRects
-        case .crossroads:
+        case .traffic1, .traffic2:
             baseBlockedRects = trafficCars.map(trafficCarFootprintRect(for:))
+        case .traffic3:
+            baseBlockedRects = GameConstants.clearNewsBuildingLayout.blockedRects + trafficCars.map(trafficCarFootprintRect(for:))
         }
 
         guard
@@ -1509,20 +1565,70 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             areaTransitionPending = true
             playerNode.setMovementState(.idle)
             onNorthRoadExitReached?()
-        case .crossroads:
-            let layout = GameConstants.crossroadsLayout
+        case .traffic1:
+            let layout = activeTrafficLayout
             let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
-            let exitThreshold = layout.movementRect.minY + (movementRadius + 0.1)
-            guard
-                worldFocusPoint.y <= exitThreshold,
+            let southExitThreshold = layout.movementRect.minY + (movementRadius + 0.1)
+            if
+                worldFocusPoint.y <= southExitThreshold,
                 layout.verticalRoadRect.insetBy(dx: 0.2, dy: 0).contains(worldFocusPoint)
+            {
+                areaTransitionPending = true
+                playerNode.setMovementState(.idle)
+                onSouthRoadExitReached?()
+                return
+            }
+
+            let westExitThreshold = layout.movementRect.minX + (movementRadius + 0.1)
+            guard
+                worldFocusPoint.x <= westExitThreshold,
+                layout.horizontalRoadRect.insetBy(dx: 0, dy: 0.2).contains(worldFocusPoint)
             else {
                 return
             }
 
             areaTransitionPending = true
             playerNode.setMovementState(.idle)
-            onSouthRoadExitReached?()
+            onWestRoadExitReached?()
+        case .traffic2:
+            let layout = activeTrafficLayout
+            let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+            let westExitThreshold = layout.movementRect.minX + (movementRadius + 0.1)
+            if
+                worldFocusPoint.x <= westExitThreshold,
+                layout.horizontalRoadRect.insetBy(dx: 0, dy: 0.2).contains(worldFocusPoint)
+            {
+                areaTransitionPending = true
+                playerNode.setMovementState(.idle)
+                onWestRoadExitReached?()
+                return
+            }
+
+            let eastExitThreshold = layout.movementRect.maxX - (movementRadius + 0.1)
+            guard
+                worldFocusPoint.x >= eastExitThreshold,
+                layout.horizontalRoadRect.insetBy(dx: 0, dy: 0.2).contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            areaTransitionPending = true
+            playerNode.setMovementState(.idle)
+            onEastRoadExitReached?()
+        case .traffic3:
+            let layout = activeTrafficLayout
+            let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+            let eastExitThreshold = layout.movementRect.maxX - (movementRadius + 0.1)
+            guard
+                worldFocusPoint.x >= eastExitThreshold,
+                layout.horizontalRoadRect.insetBy(dx: 0, dy: 0.2).contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            areaTransitionPending = true
+            playerNode.setMovementState(.idle)
+            onEastRoadExitReached?()
         }
     }
 
@@ -1602,5 +1708,320 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         material.roughness.contents = roughness
         material.lightingModel = .physicallyBased
         return material
+    }
+
+    private func pavedRoadMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.22, green: 0.21, blue: 0.2, alpha: 1.0),
+            roughness: 0.94
+        )
+    }
+
+    private func roadEdgeStripeMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.93, green: 0.93, blue: 0.9, alpha: 1.0),
+            roughness: 0.62
+        )
+    }
+
+    private func roadCenterStripeMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.92, green: 0.89, blue: 0.7, alpha: 1.0),
+            roughness: 0.58
+        )
+    }
+
+    private func clearNewsWallMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.2, green: 0.56, blue: 0.26, alpha: 1.0),
+            roughness: 0.82
+        )
+    }
+
+    private func clearNewsFloorMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.66, green: 0.69, blue: 0.63, alpha: 1.0),
+            roughness: 0.92
+        )
+    }
+
+    private func clearNewsDoorMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.12, green: 0.18, blue: 0.11, alpha: 1.0),
+            roughness: 0.7
+        )
+    }
+
+    private func clearNewsRoofMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.11, green: 0.34, blue: 0.15, alpha: 1.0),
+            roughness: 0.86
+        )
+    }
+
+    private func clearNewsSignMaterial() -> SCNMaterial {
+        let material = self.material(diffuse: .white, roughness: 0.72)
+        material.diffuse.contents = clearNewsSignTexture()
+        material.isDoubleSided = true
+        return material
+    }
+
+    private func addPavedRoad(
+        named name: String,
+        rect: CGRect,
+        thickness: CGFloat,
+        chamferRadius: CGFloat,
+        orientation: RoadOrientation,
+        elevation: CGFloat
+    ) {
+        let road = SCNNode(
+            geometry: SCNBox(
+                width: rect.width,
+                height: thickness,
+                length: rect.height,
+                chamferRadius: chamferRadius
+            )
+        )
+        road.name = name
+        road.geometry?.firstMaterial = pavedRoadMaterial()
+        road.position = position3D(
+            for: CGPoint(x: rect.midX, y: rect.midY),
+            elevation: elevation
+        )
+        worldNode.addChildNode(road)
+
+        addRoadEdgeStripes(for: rect, orientation: orientation, elevation: elevation + 0.029)
+        addRoadCenterStripes(for: rect, orientation: orientation, elevation: elevation + 0.032)
+    }
+
+    private func addRoadEdgeStripes(for rect: CGRect, orientation: RoadOrientation, elevation: CGFloat) {
+        let stripeThickness: CGFloat = 0.008
+        let stripeWidth: CGFloat = 0.16
+        let edgeInset: CGFloat = 0.1
+
+        for direction in [-1.0, 1.0] {
+            let stripeGeometry: SCNBox
+            let point: CGPoint
+
+            switch orientation {
+            case .horizontal:
+                stripeGeometry = SCNBox(
+                    width: rect.width * 0.94,
+                    height: stripeThickness,
+                    length: stripeWidth,
+                    chamferRadius: 0.04
+                )
+                point = CGPoint(
+                    x: rect.midX,
+                    y: rect.midY + (CGFloat(direction) * ((rect.height / 2) - edgeInset))
+                )
+            case .vertical:
+                stripeGeometry = SCNBox(
+                    width: stripeWidth,
+                    height: stripeThickness,
+                    length: rect.height * 0.94,
+                    chamferRadius: 0.04
+                )
+                point = CGPoint(
+                    x: rect.midX + (CGFloat(direction) * ((rect.width / 2) - edgeInset)),
+                    y: rect.midY
+                )
+            }
+
+            let stripe = SCNNode(geometry: stripeGeometry)
+            stripe.geometry?.firstMaterial = roadEdgeStripeMaterial()
+            stripe.position = position3D(for: point, elevation: elevation)
+            worldNode.addChildNode(stripe)
+        }
+    }
+
+    private func addRoadCenterStripes(for rect: CGRect, orientation: RoadOrientation, elevation: CGFloat) {
+        let dashLength: CGFloat = 1.95
+        let dashWidth: CGFloat = 0.2
+        let dashStep: CGFloat = 7.15
+        let axisInset: CGFloat = 4.7
+
+        switch orientation {
+        case .horizontal:
+            var x = rect.minX + axisInset
+            while x <= rect.maxX - axisInset {
+                let stripe = SCNNode(
+                    geometry: SCNBox(
+                        width: dashLength,
+                        height: 0.01,
+                        length: dashWidth,
+                        chamferRadius: 0.05
+                    )
+                )
+                stripe.geometry?.firstMaterial = roadCenterStripeMaterial()
+                stripe.position = position3D(
+                    for: CGPoint(x: x, y: rect.midY),
+                    elevation: elevation
+                )
+                worldNode.addChildNode(stripe)
+                x += dashStep
+            }
+        case .vertical:
+            var y = rect.minY + axisInset
+            while y <= rect.maxY - axisInset {
+                let stripe = SCNNode(
+                    geometry: SCNBox(
+                        width: dashWidth,
+                        height: 0.01,
+                        length: dashLength,
+                        chamferRadius: 0.05
+                    )
+                )
+                stripe.geometry?.firstMaterial = roadCenterStripeMaterial()
+                stripe.position = position3D(
+                    for: CGPoint(x: rect.midX, y: y),
+                    elevation: elevation
+                )
+                worldNode.addChildNode(stripe)
+                y += dashStep
+            }
+        }
+    }
+
+    private func groundMaterial() -> SCNMaterial {
+        let baseColor = UIColor(red: 0.17, green: 0.28, blue: 0.13, alpha: 1.0)
+        let material = material(diffuse: baseColor, roughness: 0.98)
+        let textureScale: Float = 16.0
+
+        material.diffuse.contents = groundTexture(baseColor: baseColor)
+        material.diffuse.wrapS = .repeat
+        material.diffuse.wrapT = .repeat
+        material.diffuse.contentsTransform = SCNMatrix4MakeScale(textureScale, textureScale, 1)
+        material.normal.contents = groundNormalTexture()
+        material.normal.wrapS = .repeat
+        material.normal.wrapT = .repeat
+        material.normal.contentsTransform = SCNMatrix4MakeScale(textureScale, textureScale, 1)
+        material.normal.intensity = 0.16
+        return material
+    }
+
+    private func clearNewsSignTexture() -> UIImage {
+        let size = CGSize(width: 768, height: 192)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+
+        let backgroundColor = UIColor(red: 0.09, green: 0.3, blue: 0.14, alpha: 1.0)
+        let borderColor = UIColor(red: 0.72, green: 0.9, blue: 0.68, alpha: 1.0)
+        let textColor = UIColor(red: 0.95, green: 0.98, blue: 0.92, alpha: 1.0)
+        let shadowColor = UIColor(red: 0.04, green: 0.11, blue: 0.05, alpha: 0.35)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+
+        let font = UIFont.systemFont(ofSize: 86, weight: .black)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        return UIGraphicsImageRenderer(size: size, format: format).image { rendererContext in
+            let context = rendererContext.cgContext
+            let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 6, dy: 10)
+            let path = UIBezierPath(roundedRect: bounds, cornerRadius: 24)
+
+            context.setFillColor(backgroundColor.cgColor)
+            context.addPath(path.cgPath)
+            context.fillPath()
+
+            context.setStrokeColor(borderColor.cgColor)
+            context.setLineWidth(10)
+            context.addPath(path.cgPath)
+            context.strokePath()
+
+            let shadowOffset = CGSize(width: 0, height: 5)
+            context.setShadow(offset: shadowOffset, blur: 8, color: shadowColor.cgColor)
+
+            let textBounds = CGRect(
+                x: 24,
+                y: 44,
+                width: size.width - 48,
+                height: size.height - 88
+            )
+            NSString(string: "Clear News").draw(in: textBounds, withAttributes: attributes)
+        }
+    }
+
+    private func groundTexture(baseColor: UIColor) -> UIImage {
+        let size = CGSize(width: 64, height: 64)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = 1
+
+        let shadowColor = blendedColor(
+            from: baseColor,
+            to: UIColor(red: 0.10, green: 0.17, blue: 0.08, alpha: 1.0),
+            progress: 0.55
+        )
+        let highlightColor = blendedColor(
+            from: baseColor,
+            to: UIColor(red: 0.28, green: 0.40, blue: 0.19, alpha: 1.0),
+            progress: 0.55
+        )
+
+        return UIGraphicsImageRenderer(size: size, format: format).image { rendererContext in
+            let context = rendererContext.cgContext
+            context.setFillColor(baseColor.cgColor)
+            context.fill(CGRect(origin: .zero, size: size))
+
+            for y in stride(from: 0, to: Int(size.height), by: 2) {
+                for x in stride(from: 0, to: Int(size.width), by: 2) {
+                    let variation = groundNoiseValue(x: x, y: y, seed: 17)
+                    let color = variation > 0.58 ? highlightColor : shadowColor
+                    let alpha = 0.06 + (variation * 0.1)
+                    context.setFillColor(color.withAlphaComponent(alpha).cgColor)
+                    context.fill(CGRect(x: x, y: y, width: 1, height: 1))
+
+                    if groundNoiseValue(x: x, y: y, seed: 41) > 0.93 {
+                        context.fill(CGRect(x: x, y: y, width: 1, height: 2))
+                    }
+                }
+            }
+        }
+    }
+
+    private func groundNormalTexture() -> UIImage {
+        let size = CGSize(width: 64, height: 64)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = true
+        format.scale = 1
+
+        return UIGraphicsImageRenderer(size: size, format: format).image { rendererContext in
+            let context = rendererContext.cgContext
+            let baseNormal = UIColor(red: 0.5, green: 0.5, blue: 1.0, alpha: 1.0)
+            context.setFillColor(baseNormal.cgColor)
+            context.fill(CGRect(origin: .zero, size: size))
+
+            for y in 0..<Int(size.height) {
+                for x in 0..<Int(size.width) {
+                    let variation = groundNoiseValue(x: x, y: y, seed: 89)
+                    let nx = 0.5 + ((groundNoiseValue(x: x, y: y, seed: 131) - 0.5) * 0.08)
+                    let ny = 0.5 + ((groundNoiseValue(x: x, y: y, seed: 197) - 0.5) * 0.08)
+                    let nz = 0.9 + (variation * 0.1)
+                    let normalColor = UIColor(
+                        red: nx,
+                        green: ny,
+                        blue: min(nz, 1.0),
+                        alpha: 1.0
+                    )
+                    context.setFillColor(normalColor.cgColor)
+                    context.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
+    }
+
+    private func groundNoiseValue(x: Int, y: Int, seed: UInt32) -> CGFloat {
+        var value = UInt32(truncatingIfNeeded: x) &* 73_856_093
+        value ^= UInt32(truncatingIfNeeded: y) &* 19_349_663
+        value ^= seed &* 83_492_791
+        value = (value << 13) ^ value
+        let hashed = value &* (value &* value &* 15_731 &+ 789_221) &+ 1_376_312_589
+        return CGFloat(hashed & 0x7fff_ffff) / CGFloat(0x7fff_ffff)
     }
 }

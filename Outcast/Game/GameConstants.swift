@@ -86,6 +86,8 @@ struct CrossroadsLayout: Equatable {
     let worldRect: CGRect
     let movementRect: CGRect
     let spawnPoint: CGPoint
+    let westTransitionPoint: CGPoint
+    let eastTransitionPoint: CGPoint
     let verticalRoadRect: CGRect
     let horizontalRoadRect: CGRect
     let trafficLaneYs: [CGFloat]
@@ -110,15 +112,25 @@ struct CrossroadsLayout: Equatable {
             width: worldRect.width + 12,
             height: horizontalRoadHeight
         )
+        let approachRoadMinY = movementRect.minY - 3.4
+        let approachRoadMaxY = horizontalRoadRect.minY
         verticalRoadRect = CGRect(
             x: -(verticalRoadWidth / 2),
-            y: movementRect.minY - 3.4,
+            y: approachRoadMinY,
             width: verticalRoadWidth,
-            height: (horizontalRoadRect.midY + (horizontalRoadHeight / 2)) - (movementRect.minY - 3.4)
+            height: approachRoadMaxY - approachRoadMinY
         )
         spawnPoint = CGPoint(
             x: verticalRoadRect.midX,
             y: movementRect.minY + approachLead
+        )
+        westTransitionPoint = CGPoint(
+            x: movementRect.minX + approachLead,
+            y: horizontalRoadRect.midY
+        )
+        eastTransitionPoint = CGPoint(
+            x: movementRect.maxX - approachLead,
+            y: horizontalRoadRect.midY
         )
         let laneOffset = horizontalRoadHeight * 0.25
         trafficLaneYs = [
@@ -126,6 +138,73 @@ struct CrossroadsLayout: Equatable {
             horizontalRoadRect.midY + laneOffset
         ]
         trafficWrapRange = (worldRect.minX - trafficWrapInset)...(worldRect.maxX + trafficWrapInset)
+    }
+}
+
+struct ShellBuildingLayout: Equatable {
+    let outerRect: CGRect
+    let wallThickness: CGFloat
+    let frontDoorWidth: CGFloat
+
+    var center: CGPoint {
+        CGPoint(x: outerRect.midX, y: outerRect.midY)
+    }
+
+    var interiorRect: CGRect {
+        outerRect.insetBy(dx: wallThickness, dy: wallThickness)
+    }
+
+    var frontDoorRect: CGRect {
+        CGRect(
+            x: center.x - (frontDoorWidth / 2),
+            y: outerRect.minY - (wallThickness / 2),
+            width: frontDoorWidth,
+            height: wallThickness
+        )
+    }
+
+    var southWallSegments: [CGRect] {
+        [
+            CGRect(
+                x: outerRect.minX,
+                y: outerRect.minY - (wallThickness / 2),
+                width: frontDoorRect.minX - outerRect.minX,
+                height: wallThickness
+            ),
+            CGRect(
+                x: frontDoorRect.maxX,
+                y: outerRect.minY - (wallThickness / 2),
+                width: outerRect.maxX - frontDoorRect.maxX,
+                height: wallThickness
+            )
+        ].filter { $0.width > 0 }
+    }
+
+    var wallRects: [CGRect] {
+        southWallSegments + [
+            CGRect(
+                x: outerRect.minX,
+                y: outerRect.maxY - (wallThickness / 2),
+                width: outerRect.width,
+                height: wallThickness
+            ),
+            CGRect(
+                x: outerRect.minX - (wallThickness / 2),
+                y: outerRect.minY,
+                width: wallThickness,
+                height: outerRect.height
+            ),
+            CGRect(
+                x: outerRect.maxX - (wallThickness / 2),
+                y: outerRect.minY,
+                width: wallThickness,
+                height: outerRect.height
+            )
+        ]
+    }
+
+    var blockedRects: [CGRect] {
+        wallRects + [frontDoorRect]
     }
 }
 
@@ -172,6 +251,33 @@ enum GameConstants {
         intersectionOffset: 16.8,
         trafficWrapInset: 12.0
     )
+    static let traffic3WorldWidth: CGFloat = (worldWidth * 3) + 24.0
+    static let traffic3WorldRect = CGRect(
+        x: -(traffic3WorldWidth / 2),
+        y: -(worldHeight / 2),
+        width: traffic3WorldWidth,
+        height: worldHeight
+    )
+    static let traffic3Layout = CrossroadsLayout(
+        worldRect: traffic3WorldRect,
+        barrierInset: worldBarrierInset,
+        verticalRoadWidth: 6.8,
+        horizontalRoadHeight: 10.8,
+        approachLead: 4.8,
+        intersectionOffset: 16.8,
+        trafficWrapInset: 12.0
+    )
+    static let clearNewsBuildingLayout = ShellBuildingLayout(
+        outerRect: CGRect(
+            x: traffic3Layout.eastTransitionPoint.x - 18.2,
+            y: traffic3Layout.horizontalRoadRect.maxY + 4.4,
+            width: 20.0,
+            height: 13.0
+        ),
+        wallThickness: 0.48,
+        frontDoorWidth: 3.4
+    )
+    static let clearNewsWallHeight: CGFloat = 6.2
     static let houseWidth: CGFloat = 6.8
     static let houseDepth: CGFloat = 5.6
     static let houseWallHeight: CGFloat = 3.9
@@ -221,8 +327,10 @@ enum GameConstants {
     static let parkedCarInteractionReach: CGFloat = 1.35
     static let parkedCarDriveSpeed: CGFloat = 12.4
     static let parkedCarMovementRadius: CGFloat = 0.96
-    static let parkedCarPoint = CGPoint(
-        x: crossroadsLayout.verticalRoadRect.maxX + (parkedCarWidth / 2) + 0.65,
-        y: crossroadsLayout.spawnPoint.y + 0.7
-    )
+    static func parkedCarPoint(for layout: CrossroadsLayout) -> CGPoint {
+        CGPoint(
+            x: layout.verticalRoadRect.maxX + (parkedCarWidth / 2) + 0.65,
+            y: layout.spawnPoint.y + 0.7
+        )
+    }
 }

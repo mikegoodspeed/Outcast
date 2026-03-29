@@ -1,5 +1,6 @@
 import CoreGraphics
 import SceneKit
+import UIKit
 import XCTest
 @testable import Outcast
 
@@ -54,6 +55,33 @@ final class GameSceneTests: XCTestCase {
             CGFloat(-ground.worldPosition.z) + (groundGeometry.length / 2),
             worldLayout.roadSurfaceRect.maxY - 0.001
         )
+    }
+
+    func testGroundUsesRepeatingTextureMaterial() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let ground = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "worldGround", recursively: true))
+        let material = try XCTUnwrap(ground.geometry?.firstMaterial)
+
+        XCTAssertTrue(material.diffuse.contents is UIImage)
+        XCTAssertEqual(material.diffuse.wrapS, .repeat)
+        XCTAssertEqual(material.diffuse.wrapT, .repeat)
+        XCTAssertTrue(material.normal.contents is UIImage)
+    }
+
+    func testHomesteadAndCrossroadsRoadsSharePavedSurfaceColor() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let northRoad = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "northRoad", recursively: true))
+        let northRoadColor = try XCTUnwrap(northRoad.geometry?.firstMaterial?.diffuse.contents as? UIColor)
+
+        gameScene.completeNorthRoadTransition()
+
+        let approachRoad = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "crossroadsApproachRoad", recursively: true))
+        let mainRoad = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "crossroadsMainRoad", recursively: true))
+        let approachRoadColor = try XCTUnwrap(approachRoad.geometry?.firstMaterial?.diffuse.contents as? UIColor)
+        let mainRoadColor = try XCTUnwrap(mainRoad.geometry?.firstMaterial?.diffuse.contents as? UIColor)
+
+        assertColorsEqual(northRoadColor, approachRoadColor)
+        assertColorsEqual(northRoadColor, mainRoadColor)
     }
 
     func testHouseContainsBedInTopLeftInteriorCorner() throws {
@@ -311,12 +339,98 @@ final class GameSceneTests: XCTestCase {
         let cars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
         let carVariants = Set(cars.map(\.childNodes.count))
 
-        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic1")
         XCTAssertNotNil(approachRoad)
         XCTAssertNotNil(mainRoad)
         XCTAssertNil(house)
         XCTAssertGreaterThanOrEqual(cars.count, 6)
         XCTAssertGreaterThan(carVariants.count, 1)
+    }
+
+    func testCompletingWestRoadTransitionBuildsTraffic2WithoutHomeRoad() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        let approachRoad = gameScene.scene.rootNode.childNode(withName: "crossroadsApproachRoad", recursively: true)
+        let mainRoad = gameScene.scene.rootNode.childNode(withName: "crossroadsMainRoad", recursively: true)
+        let cars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic2")
+        XCTAssertNil(approachRoad)
+        XCTAssertNotNil(mainRoad)
+        XCTAssertGreaterThanOrEqual(cars.count, 6)
+    }
+
+    func testCompletingSecondWestRoadTransitionBuildsTraffic3WithoutHomeRoad() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        let approachRoad = gameScene.scene.rootNode.childNode(withName: "crossroadsApproachRoad", recursively: true)
+        let mainRoad = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "crossroadsMainRoad", recursively: true))
+        let cars = allNodes(in: gameScene.scene.rootNode).filter { $0.name == "trafficCar" }
+        let mainRoadGeometry = try XCTUnwrap(mainRoad.geometry as? SCNBox)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
+        XCTAssertNil(approachRoad)
+        XCTAssertNotNil(mainRoad)
+        XCTAssertGreaterThanOrEqual(cars.count, 6)
+        XCTAssertEqual(
+            mainRoadGeometry.width,
+            GameConstants.crossroadsLayout.horizontalRoadRect.width * 3,
+            accuracy: 0.001
+        )
+    }
+
+    func testTraffic3BuildsClearNewsShellBuilding() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        XCTAssertNil(gameScene.scene.rootNode.childNode(withName: "clearNewsBuilding", recursively: true))
+
+        gameScene.completeWestRoadTransition()
+
+        let building = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsBuilding", recursively: true))
+        let floor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsFloor", recursively: true))
+        let roof = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsRoof", recursively: true))
+        let sign = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsSign", recursively: true))
+        let door = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsDoor", recursively: true))
+        let walls = allNodes(in: building).filter { $0.name?.hasPrefix("clearNewsWall") == true }
+        let wallColor = try XCTUnwrap(walls.first?.geometry?.firstMaterial?.diffuse.contents as? UIColor)
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
+        XCTAssertEqual(walls.count, GameConstants.clearNewsBuildingLayout.wallRects.count)
+        XCTAssertEqual(CGFloat(building.position.x), 0, accuracy: 0.001)
+        XCTAssertEqual(CGFloat(building.position.z), 0, accuracy: 0.001)
+        XCTAssertNotNil(floor.geometry as? SCNBox)
+        XCTAssertNotNil(roof.geometry as? SCNBox)
+        XCTAssertNotNil(sign.geometry as? SCNPlane)
+        XCTAssertNotNil(door.geometry as? SCNBox)
+        XCTAssertLessThan(CGFloat(sign.position.y), CGFloat(roof.position.y))
+        XCTAssertGreaterThan(CGFloat(sign.position.z), CGFloat(roof.position.z))
+        assertColorsEqual(
+            wallColor,
+            UIColor(red: 0.2, green: 0.56, blue: 0.26, alpha: 1.0)
+        )
+    }
+
+    func testCrossroadsApproachRoadStopsAtTrafficRoadEdge() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let layout = GameConstants.crossroadsLayout
+
+        gameScene.completeNorthRoadTransition()
+
+        let approachRoad = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "crossroadsApproachRoad", recursively: true))
+        let approachGeometry = try XCTUnwrap(approachRoad.geometry as? SCNBox)
+        let approachMaxY = CGFloat(-approachRoad.position.z) + (approachGeometry.length / 2)
+
+        XCTAssertEqual(approachMaxY, layout.horizontalRoadRect.minY, accuracy: 0.001)
     }
 
     func testParkedCarOnlyAppearsInCrossroadsAndStaysOffRoad() throws {
@@ -355,7 +469,127 @@ final class GameSceneTests: XCTestCase {
         advance(gameScene, renderer: renderer, frames: 37...60, input: CGVector(dx: 0, dy: -1))
 
         XCTAssertEqual(callbackCount, 1)
-        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic1")
+    }
+
+    func testWestRoadExitTriggersSingleTraffic2Signal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onWestRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...36, input: CGVector(dx: 0, dy: 1))
+        advance(gameScene, renderer: renderer, frames: 37...118, input: CGVector(dx: -1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 119...146, input: CGVector(dx: -1, dy: 0))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic1")
+    }
+
+    func testEastRoadExitTriggersSingleReturnToTraffic1Signal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onEastRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...80, input: CGVector(dx: 1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 81...108, input: CGVector(dx: 1, dy: 0))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic2")
+    }
+
+    func testWestRoadExitTriggersSingleTraffic3Signal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onWestRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...150, input: CGVector(dx: -1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 151...190, input: CGVector(dx: -1, dy: 0))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic2")
+    }
+
+    func testEastRoadExitTriggersSingleReturnToTraffic2Signal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onEastRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...80, input: CGVector(dx: 1, dy: 0))
+        advance(gameScene, renderer: renderer, frames: 81...108, input: CGVector(dx: 1, dy: 0))
+
+        XCTAssertEqual(callbackCount, 1)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
+    }
+
+    func testTraffic2CannotTriggerHomeRoadReturnSignal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onSouthRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...60, input: CGVector(dx: 0, dy: -1))
+
+        XCTAssertEqual(callbackCount, 0)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic2")
+    }
+
+    func testTraffic3CannotTriggerHomeRoadReturnSignal() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeNorthRoadTransition()
+        gameScene.completeWestRoadTransition()
+        gameScene.completeWestRoadTransition()
+
+        var callbackCount = 0
+        gameScene.onSouthRoadExitReached = {
+            callbackCount += 1
+        }
+
+        advance(gameScene, renderer: renderer, frames: 0...60, input: CGVector(dx: 0, dy: -1))
+
+        XCTAssertEqual(callbackCount, 0)
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
     }
 
     func testCompletingSouthRoadTransitionReturnsPlayerToHome() {
@@ -560,7 +794,7 @@ final class GameSceneTests: XCTestCase {
         advance(gameScene, renderer: renderer, frames: 27...50, input: CGVector(dx: 0, dy: -1))
 
         XCTAssertEqual(callbackCount, 1)
-        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic1")
 
         gameScene.completeSouthRoadTransition()
 
@@ -590,7 +824,7 @@ final class GameSceneTests: XCTestCase {
         gameScene.completeNorthRoadTransition()
         let crossroadsCar = gameScene.scene.rootNode.childNode(withName: "parkedCar", recursively: true)
 
-        XCTAssertEqual(gameScene.currentAreaIdentifier, "crossroads")
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic1")
         XCTAssertTrue(gameScene.isDrivingParkedCar)
         XCTAssertNotNil(crossroadsCar)
     }
@@ -637,5 +871,30 @@ final class GameSceneTests: XCTestCase {
         for frame in frames {
             gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
         }
+    }
+
+    private func assertColorsEqual(
+        _ left: UIColor,
+        _ right: UIColor,
+        accuracy: CGFloat = 0.001,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let leftComponents = rgbaComponents(for: left)
+        let rightComponents = rgbaComponents(for: right)
+
+        XCTAssertEqual(leftComponents.red, rightComponents.red, accuracy: accuracy, file: file, line: line)
+        XCTAssertEqual(leftComponents.green, rightComponents.green, accuracy: accuracy, file: file, line: line)
+        XCTAssertEqual(leftComponents.blue, rightComponents.blue, accuracy: accuracy, file: file, line: line)
+        XCTAssertEqual(leftComponents.alpha, rightComponents.alpha, accuracy: accuracy, file: file, line: line)
+    }
+
+    private func rgbaComponents(for color: UIColor) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat) {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        XCTAssertTrue(color.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        return (red, green, blue, alpha)
     }
 }

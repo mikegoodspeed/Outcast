@@ -162,6 +162,20 @@ final class GameViewController: UIViewController {
                 }
             }
         }
+        gameScene.onWestRoadExitReached = { [weak self] in
+            DispatchQueue.main.async {
+                self?.presentAreaTransitionFade {
+                    self?.gameScene.completeWestRoadTransition()
+                }
+            }
+        }
+        gameScene.onEastRoadExitReached = { [weak self] in
+            DispatchQueue.main.async {
+                self?.presentAreaTransitionFade {
+                    self?.gameScene.completeEastRoadTransition()
+                }
+            }
+        }
     }
 
     @objc
