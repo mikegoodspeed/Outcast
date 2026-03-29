@@ -351,13 +351,18 @@ enum GameConstants {
         frontDoorWidth: houseFrontDoorWidth
     )
     static let groundThickness: CGFloat = 0.24
+    static let cameraFieldOfView: CGFloat = 48
     static let cameraHeight: CGFloat = 10.4
     static let cameraDistance: CGFloat = 6.8
     static let cameraTilt: CGFloat = -0.66
+    static let conversationCameraFieldOfView: CGFloat = 34
+    static let conversationCameraHeight: CGFloat = 8.4
+    static let conversationCameraDistance: CGFloat = 5.1
     static let joystickSize = CGSize(width: 144, height: 144)
     static let joystickMargin: CGFloat = 24
     static let actionButtonSize = CGSize(width: 58, height: 58)
     static let actionButtonOffset = CGPoint(x: 68, y: 88)
+    static let clearNewsElevatorInteractionReach: CGFloat = 1.25
     static let interactionPromptCornerRadius: CGFloat = 18
     static let interactionPromptBottomInset: CGFloat = 28
     static let interactionPromptHorizontalInset: CGFloat = 20
@@ -367,6 +372,7 @@ enum GameConstants {
     static let sleepFadeDuration: TimeInterval = 0.55
     static let sleepBlackoutDuration: TimeInterval = 2.0
     static let areaTransitionFadeDuration: TimeInterval = 0.42
+    static let clearNewsElevatorFadeDuration: TimeInterval = 0.42
     static let trafficCarBaseSpeed: CGFloat = 8.2
     static let trafficCarMaxWidth: CGFloat = 1.76
     static let trafficPedestrianYieldGap: CGFloat = 0.78

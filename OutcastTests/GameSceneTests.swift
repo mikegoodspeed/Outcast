@@ -474,6 +474,125 @@ final class GameSceneTests: XCTestCase {
         XCTAssertTrue(roof.isHidden)
     }
 
+    func testRobertConversationFocusesCameraAndUnlocksElevator() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.spawn(at: .clearNews)
+
+        let leftDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsElevatorLeftDoor", recursively: true))
+        let rightDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsElevatorRightDoor", recursively: true))
+        let closedLeftX = CGFloat(leftDoor.position.x)
+        let closedRightX = CGFloat(rightDoor.position.x)
+
+        advance(gameScene, renderer: renderer, frames: 0...34, input: CGVector(dx: 1, dy: 1))
+
+        XCTAssertTrue(gameScene.isPlayerNearClearNewsElevatorForInteraction)
+        XCTAssertFalse(gameScene.isClearNewsClerkCameraFocused)
+        XCTAssertEqual(gameScene.currentCameraFieldOfView, GameConstants.cameraFieldOfView, accuracy: 0.001)
+
+        XCTAssertTrue(gameScene.beginClearNewsReceptionConversation())
+
+        XCTAssertTrue(gameScene.isClearNewsClerkCameraFocused)
+        XCTAssertEqual(
+            gameScene.currentCameraFieldOfView,
+            GameConstants.conversationCameraFieldOfView,
+            accuracy: 0.001
+        )
+        XCTAssertFalse(gameScene.isClearNewsElevatorDoorOpen)
+
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+
+        XCTAssertFalse(gameScene.isClearNewsClerkCameraFocused)
+        XCTAssertTrue(gameScene.isClearNewsElevatorUnlocked)
+        XCTAssertTrue(gameScene.isClearNewsElevatorDoorOpen)
+        XCTAssertEqual(gameScene.currentPlayerName, "Alex")
+        XCTAssertEqual(gameScene.currentCameraFieldOfView, GameConstants.cameraFieldOfView, accuracy: 0.001)
+        XCTAssertLessThan(CGFloat(leftDoor.position.x), closedLeftX)
+        XCTAssertGreaterThan(CGFloat(rightDoor.position.x), closedRightX)
+    }
+
+    func testEnteringUnlockedClearNewsElevatorClosesDoorsAndTrapsPlayer() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.spawn(at: .clearNews)
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+
+        let leftDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsElevatorLeftDoor", recursively: true))
+        let openLeftX = CGFloat(leftDoor.position.x)
+
+        XCTAssertTrue(gameScene.isClearNewsElevatorDoorOpen)
+
+        let partiallyInsidePoint = CGPoint(
+            x: GameConstants.clearNewsElevatorLayout.center.x,
+            y: GameConstants.clearNewsElevatorLayout.interiorRect.minY + (GameConstants.playerRadius * 0.5)
+        )
+        gameScene.setPlayerPosition(
+            partiallyInsidePoint,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 0...1, input: .zero)
+
+        XCTAssertTrue(gameScene.isPlayerInsideClearNewsElevator)
+        XCTAssertTrue(gameScene.isClearNewsElevatorDoorOpen)
+        XCTAssertEqual(CGFloat(leftDoor.position.x), openLeftX, accuracy: 0.001)
+
+        gameScene.setPlayerPosition(
+            GameConstants.clearNewsElevatorLayout.center,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 2...3, input: .zero)
+
+        XCTAssertTrue(gameScene.isPlayerInsideClearNewsElevator)
+        XCTAssertFalse(gameScene.isClearNewsElevatorDoorOpen)
+        XCTAssertGreaterThan(CGFloat(leftDoor.position.x), openLeftX)
+
+        advance(gameScene, renderer: renderer, frames: 4...44, input: CGVector(dx: 0, dy: -1))
+
+        XCTAssertTrue(gameScene.isPlayerInsideClearNewsElevator)
+    }
+
+    func testClearNewsElevatorSealCallbackFiresOnlyAfterFullEntry() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+        var sealCount = 0
+
+        gameScene.onClearNewsElevatorSealed = {
+            sealCount += 1
+        }
+
+        gameScene.spawn(at: .clearNews)
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+
+        let partiallyInsidePoint = CGPoint(
+            x: GameConstants.clearNewsElevatorLayout.center.x,
+            y: GameConstants.clearNewsElevatorLayout.interiorRect.minY + (GameConstants.playerRadius * 0.5)
+        )
+        gameScene.setPlayerPosition(
+            partiallyInsidePoint,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 0...1, input: .zero)
+
+        XCTAssertEqual(sealCount, 0)
+
+        gameScene.setPlayerPosition(
+            GameConstants.clearNewsElevatorLayout.center,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 2...3, input: .zero)
+
+        XCTAssertEqual(sealCount, 1)
+
+        advance(gameScene, renderer: renderer, frames: 4...6, input: .zero)
+
+        XCTAssertEqual(sealCount, 1)
+    }
+
     func testCrossroadsApproachRoadStopsAtTrafficRoadEdge() throws {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
         let layout = GameConstants.crossroadsLayout

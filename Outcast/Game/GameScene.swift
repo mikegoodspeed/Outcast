@@ -29,6 +29,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case vertical
     }
 
+    private enum CameraFocusMode: Equatable {
+        case player
+        case clearNewsClerk
+    }
+
     private struct BedSequenceState {
         let startPoint: CGPoint
         let approachPoint: CGPoint
@@ -62,6 +67,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var onSouthRoadExitReached: (() -> Void)?
     var onWestRoadExitReached: (() -> Void)?
     var onEastRoadExitReached: (() -> Void)?
+    var onClearNewsElevatorSealed: (() -> Void)?
     let scene = SCNScene()
     var isPlayerNearBedForInteraction: Bool {
         guard currentArea == .homestead else {
@@ -89,6 +95,36 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
     var isDrivingParkedCar: Bool {
         parkedCarState?.isOccupied == true
+    }
+    var isPlayerNearClearNewsElevatorForInteraction: Bool {
+        guard
+            currentArea == .traffic3,
+            !isDrivingParkedCar,
+            !hasMetClearNewsReceptionist,
+            !hasEnteredClearNewsElevator
+        else {
+            return false
+        }
+
+        return clearNewsElevatorInteractionRect.contains(worldFocusPoint)
+    }
+    var isClearNewsClerkCameraFocused: Bool {
+        cameraFocusMode == .clearNewsClerk
+    }
+    var isClearNewsElevatorUnlocked: Bool {
+        hasMetClearNewsReceptionist
+    }
+    var isClearNewsElevatorDoorOpen: Bool {
+        isClearNewsElevatorDoorOpenState
+    }
+    var isPlayerInsideClearNewsElevator: Bool {
+        currentArea == .traffic3 && GameConstants.clearNewsElevatorLayout.containsInterior(worldFocusPoint)
+    }
+    var currentPlayerName: String? {
+        storedPlayerName
+    }
+    var currentCameraFieldOfView: CGFloat {
+        cameraNode.camera?.fieldOfView ?? GameConstants.cameraFieldOfView
     }
     var daylightCycleProgress: CGFloat {
         CGFloat(daylightElapsed / GameConstants.daylightCycleDuration)
@@ -120,11 +156,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var clearNewsRoofNode: SCNNode?
     private var clearNewsDoorPivot: SCNNode?
     private var clearNewsElevatorRoofNode: SCNNode?
+    private var clearNewsClerkNode: SCNNode?
+    private var clearNewsElevatorLeftDoorNode: SCNNode?
+    private var clearNewsElevatorRightDoorNode: SCNNode?
     private var isFrontDoorOpen = false
     private var clearNewsDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
     private var isClearNewsDoorOpen = false
+    private var isClearNewsElevatorDoorOpenState = false
+    private var hasMetClearNewsReceptionist = false
+    private var hasEnteredClearNewsElevator = false
+    private var storedPlayerName: String?
     private var currentArea: Area = .homestead
     private var areaTransitionPending = false
+    private var cameraFocusMode: CameraFocusMode = .player
     private var worldFocusPoint = CGPoint.zero
     private var roomBounds = RoomBounds(rect: .zero)
     private var lastUpdateTime: TimeInterval?
@@ -167,6 +211,25 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
     }
 
+    private var clearNewsElevatorInteractionRect: CGRect {
+        GameConstants.clearNewsElevatorLayout.frontDoorRect.insetBy(
+            dx: -GameConstants.clearNewsElevatorInteractionReach,
+            dy: -GameConstants.clearNewsElevatorInteractionReach
+        )
+    }
+
+    private var clearNewsElevatorFullyEnteredRect: CGRect {
+        let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+        let insetRect = GameConstants.clearNewsElevatorLayout.interiorRect.insetBy(
+            dx: movementRadius,
+            dy: movementRadius
+        )
+        guard insetRect.width > 0, insetRect.height > 0 else {
+            return GameConstants.clearNewsElevatorLayout.interiorRect
+        }
+        return insetRect
+    }
+
     init(size: CGSize) {
         self.viewportSize = size
         super.init()
@@ -197,6 +260,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 heading: CGVector(dx: 0, dy: 1)
             )
         }
+    }
+
+    func setPlayerPosition(_ point: CGPoint, heading: CGVector? = nil) {
+        let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+        worldFocusPoint = roomBounds.clamped(point, radius: movementRadius)
+
+        if let heading {
+            lastFacingVector = heading
+            playerNode.setFacing(vector: heading, animated: false)
+        }
+
+        updatePlayerGrounding()
+        updateWorldOffset()
+        updateHousePresentation()
     }
 
     func completeNorthRoadTransition() {
@@ -330,6 +407,34 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         return true
     }
 
+    @discardableResult
+    func beginClearNewsReceptionConversation() -> Bool {
+        guard isPlayerNearClearNewsElevatorForInteraction else {
+            return false
+        }
+
+        playerNode.setMovementState(.idle)
+        setCameraFocusMode(.clearNewsClerk)
+        updateWorldOffset()
+        return true
+    }
+
+    func completeClearNewsReceptionConversation(named name: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            return
+        }
+
+        storedPlayerName = trimmedName
+        hasMetClearNewsReceptionist = true
+        setCameraFocusMode(.player)
+        if !hasEnteredClearNewsElevator {
+            setClearNewsElevatorDoorOpen(true)
+            refreshRoomBounds()
+        }
+        updateWorldOffset()
+    }
+
     func wakeFromBed() {
         guard let sleepReturnPoint else {
             return
@@ -423,6 +528,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             playerNode.setFacing(vector: movementVector)
         }
         updateParkedCarStateIfNeeded()
+        updateClearNewsElevatorStateIfNeeded()
         updateAreaTransitionIfNeeded()
         updateTraffic(by: deltaTime)
         updatePlayerGrounding()
@@ -444,7 +550,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func configureCamera() {
         cameraNode.camera = SCNCamera()
-        cameraNode.camera?.fieldOfView = 48
+        cameraNode.camera?.fieldOfView = GameConstants.cameraFieldOfView
         cameraNode.camera?.wantsHDR = true
         cameraNode.camera?.zNear = 0.1
         cameraNode.camera?.zFar = 220
@@ -489,6 +595,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         isFrontDoorOpen = false
         isClearNewsDoorOpen = false
         clearNewsDoorSwingDirection = .outward
+        setCameraFocusMode(.player, animated: false)
         sleepReturnPoint = nil
         bedSequence = nil
         lastFacingVector = heading
@@ -521,7 +628,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         clearNewsRoofNode = nil
         clearNewsDoorPivot = nil
         clearNewsElevatorRoofNode = nil
+        clearNewsClerkNode = nil
+        clearNewsElevatorLeftDoorNode = nil
+        clearNewsElevatorRightDoorNode = nil
         trafficCars.removeAll()
+        isClearNewsElevatorDoorOpenState = currentArea == .traffic3
+            && hasMetClearNewsReceptionist
+            && !hasEnteredClearNewsElevator
 
         switch currentArea {
         case .homestead:
@@ -542,6 +655,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         playerNode.isHidden = isDrivingParkedCar
+        applyCameraFocusMode(animated: false)
         updatePlayerGrounding()
         updateParkedCarNode()
         updateWorldOffset()
@@ -765,6 +879,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             elevation: GameConstants.clearNewsFloorHeight
         )
         building.addChildNode(clerk)
+        clearNewsClerkNode = clerk
 
         addClearNewsElevator(to: building)
     }
@@ -832,6 +947,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             elevation: doorHeight / 2
         )
         building.addChildNode(leftDoor)
+        clearNewsElevatorLeftDoorNode = leftDoor
 
         let rightDoor = SCNNode(
             geometry: SCNBox(
@@ -851,6 +967,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             elevation: doorHeight / 2
         )
         building.addChildNode(rightDoor)
+        clearNewsElevatorRightDoorNode = rightDoor
+        applyClearNewsElevatorDoorState(animated: false)
     }
 
     private func addHomesteadTreeBands() {
@@ -1531,7 +1649,22 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func updateWorldOffset() {
         worldNode.position = SCNVector3(Float(-worldFocusPoint.x), 0, Float(worldFocusPoint.y))
-        focusTargetNode.position = SCNVector3(0, 2.15 + playerNode.position.y, 0)
+        switch cameraFocusMode {
+        case .player:
+            focusTargetNode.position = SCNVector3(0, 2.15 + playerNode.position.y, 0)
+        case .clearNewsClerk:
+            guard let clearNewsClerkNode else {
+                focusTargetNode.position = SCNVector3(0, 2.15 + playerNode.position.y, 0)
+                return
+            }
+
+            let clerkWorldPosition = clearNewsClerkNode.presentation.worldPosition
+            focusTargetNode.position = SCNVector3(
+                clerkWorldPosition.x,
+                clerkWorldPosition.y + Float(GameConstants.clearNewsClerkRadius * 2.4),
+                clerkWorldPosition.z
+            )
+        }
     }
 
     private func advanceDaylight(by deltaTime: TimeInterval) {
@@ -1682,7 +1815,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case .traffic3:
             baseBlockedRects = GameConstants.clearNewsBuildingLayout.blockedRects(frontDoorOpen: isClearNewsDoorOpen)
                 + [GameConstants.clearNewsCounterRect]
-                + GameConstants.clearNewsElevatorLayout.blockedRects
+                + GameConstants.clearNewsElevatorLayout.blockedRects(frontDoorOpen: isClearNewsElevatorDoorOpenState)
                 + [CGRect(
                     x: GameConstants.clearNewsClerkPoint.x - GameConstants.clearNewsClerkRadius,
                     y: GameConstants.clearNewsClerkPoint.y - GameConstants.clearNewsClerkRadius,
@@ -1784,6 +1917,104 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         SCNTransaction.animationDuration = 0.16
         clearNewsDoorPivot?.eulerAngles.y = isOpen ? openAngle : 0
         SCNTransaction.commit()
+    }
+
+    private func setClearNewsElevatorDoorOpen(_ isOpen: Bool, animated: Bool = true) {
+        guard isClearNewsElevatorDoorOpenState != isOpen else {
+            return
+        }
+
+        isClearNewsElevatorDoorOpenState = isOpen
+        applyClearNewsElevatorDoorState(animated: animated)
+    }
+
+    private func applyClearNewsElevatorDoorState(animated: Bool) {
+        let layout = GameConstants.clearNewsElevatorLayout
+        let doorGap: CGFloat = 0.08
+        let singleDoorWidth = (layout.frontDoorRect.width - doorGap) / 2
+        let doorY = layout.outerRect.minY - 0.01
+        let doorHeight = 4.4 * 0.82
+        let doorTravel = singleDoorWidth * 0.82
+
+        let leftDoorPosition = position3D(
+            for: CGPoint(
+                x: layout.frontDoorRect.minX + (singleDoorWidth / 2)
+                    - (isClearNewsElevatorDoorOpenState ? doorTravel : 0),
+                y: doorY
+            ),
+            elevation: doorHeight / 2
+        )
+        let rightDoorPosition = position3D(
+            for: CGPoint(
+                x: layout.frontDoorRect.maxX - (singleDoorWidth / 2)
+                    + (isClearNewsElevatorDoorOpenState ? doorTravel : 0),
+                y: doorY
+            ),
+            elevation: doorHeight / 2
+        )
+
+        if animated {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.22
+        }
+        clearNewsElevatorLeftDoorNode?.position = leftDoorPosition
+        clearNewsElevatorRightDoorNode?.position = rightDoorPosition
+        if animated {
+            SCNTransaction.commit()
+        }
+    }
+
+    private func setCameraFocusMode(_ mode: CameraFocusMode, animated: Bool = true) {
+        guard cameraFocusMode != mode else {
+            return
+        }
+
+        cameraFocusMode = mode
+        applyCameraFocusMode(animated: animated)
+    }
+
+    private func applyCameraFocusMode(animated: Bool) {
+        let targetHeight: CGFloat
+        let targetDistance: CGFloat
+        let targetFieldOfView: CGFloat
+
+        switch cameraFocusMode {
+        case .player:
+            targetHeight = GameConstants.cameraHeight
+            targetDistance = GameConstants.cameraDistance
+            targetFieldOfView = GameConstants.cameraFieldOfView
+        case .clearNewsClerk:
+            targetHeight = GameConstants.conversationCameraHeight
+            targetDistance = GameConstants.conversationCameraDistance
+            targetFieldOfView = GameConstants.conversationCameraFieldOfView
+        }
+
+        if animated {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.24
+        }
+        cameraNode.position = SCNVector3(0, Float(targetHeight), Float(targetDistance))
+        cameraNode.camera?.fieldOfView = targetFieldOfView
+        if animated {
+            SCNTransaction.commit()
+        }
+    }
+
+    private func updateClearNewsElevatorStateIfNeeded() {
+        guard
+            currentArea == .traffic3,
+            hasMetClearNewsReceptionist,
+            !hasEnteredClearNewsElevator,
+            isClearNewsElevatorDoorOpenState,
+            clearNewsElevatorFullyEnteredRect.contains(worldFocusPoint)
+        else {
+            return
+        }
+
+        hasEnteredClearNewsElevator = true
+        setClearNewsElevatorDoorOpen(false)
+        refreshRoomBounds()
+        onClearNewsElevatorSealed?()
     }
 
     private func updateAreaTransitionIfNeeded() {
