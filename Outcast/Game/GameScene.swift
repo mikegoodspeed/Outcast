@@ -13,6 +13,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case traffic1
         case traffic2
         case traffic3
+        case clearNewsThirdFloor
 
         var isTrafficArea: Bool {
             switch self {
@@ -20,6 +21,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 return false
             case .traffic1, .traffic2, .traffic3:
                 return true
+            case .clearNewsThirdFloor:
+                return false
             }
         }
     }
@@ -118,7 +121,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         isClearNewsElevatorDoorOpenState
     }
     var isPlayerInsideClearNewsElevator: Bool {
-        currentArea == .traffic3 && GameConstants.clearNewsElevatorLayout.containsInterior(worldFocusPoint)
+        (currentArea == .traffic3 || currentArea == .clearNewsThirdFloor)
+            && GameConstants.clearNewsElevatorLayout.containsInterior(worldFocusPoint)
     }
     var currentPlayerName: String? {
         storedPlayerName
@@ -139,6 +143,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return "traffic2"
         case .traffic3:
             return "traffic3"
+        case .clearNewsThirdFloor:
+            return "clearNewsThirdFloor"
         }
     }
 
@@ -159,6 +165,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var clearNewsClerkNode: SCNNode?
     private var clearNewsElevatorLeftDoorNode: SCNNode?
     private var clearNewsElevatorRightDoorNode: SCNNode?
+    private var hasExitedClearNewsThirdFloorElevator = false
     private var isFrontDoorOpen = false
     private var clearNewsDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
     private var isClearNewsDoorOpen = false
@@ -186,12 +193,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return worldLayout.movementRect
         case .traffic1, .traffic2, .traffic3:
             return activeTrafficLayout.movementRect
+        case .clearNewsThirdFloor:
+            return GameConstants.clearNewsThirdFloorLayout.interiorRect
         }
     }
 
     private var activeTrafficLayout: CrossroadsLayout {
         switch currentArea {
-        case .homestead, .traffic1, .traffic2:
+        case .homestead, .traffic1, .traffic2, .clearNewsThirdFloor:
             return GameConstants.crossroadsLayout
         case .traffic3:
             return GameConstants.traffic3Layout
@@ -208,7 +217,23 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return GameConstants.crossroadsLayout.eastTransitionPoint
         case .traffic3:
             return GameConstants.traffic3Layout.eastTransitionPoint
+        case .clearNewsThirdFloor:
+            return GameConstants.clearNewsElevatorLayout.center
         }
+    }
+
+    private var activeClearNewsBuildingLayout: ShellBuildingLayout {
+        currentArea == .clearNewsThirdFloor
+            ? GameConstants.clearNewsThirdFloorLayout
+            : GameConstants.clearNewsBuildingLayout
+    }
+
+    private var clearNewsElevatorFullyExitedRect: CGRect {
+        let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
+        return GameConstants.clearNewsElevatorLayout.interiorRect.insetBy(
+            dx: -movementRadius,
+            dy: -movementRadius
+        )
     }
 
     private var clearNewsElevatorInteractionRect: CGRect {
@@ -307,7 +332,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             destinationArea = .traffic2
         case .traffic2:
             destinationArea = .traffic3
-        case .homestead, .traffic3:
+        case .homestead, .traffic3, .clearNewsThirdFloor:
             return
         }
 
@@ -327,7 +352,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             destinationArea = .traffic1
         case .traffic3:
             destinationArea = .traffic2
-        case .homestead, .traffic1:
+        case .homestead, .traffic1, .clearNewsThirdFloor:
             return
         }
 
@@ -433,6 +458,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             refreshRoomBounds()
         }
         updateWorldOffset()
+    }
+
+    func completeClearNewsElevatorThirdFloorTransition() {
+        hasExitedClearNewsThirdFloorElevator = false
+        completeTransition(
+            to: .clearNewsThirdFloor,
+            destinationPoint: GameConstants.clearNewsElevatorLayout.center,
+            heading: CGVector(dx: 0, dy: -1)
+        )
     }
 
     func wakeFromBed() {
@@ -632,9 +666,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         clearNewsElevatorLeftDoorNode = nil
         clearNewsElevatorRightDoorNode = nil
         trafficCars.removeAll()
-        isClearNewsElevatorDoorOpenState = currentArea == .traffic3
-            && hasMetClearNewsReceptionist
-            && !hasEnteredClearNewsElevator
+        isClearNewsElevatorDoorOpenState = switch currentArea {
+        case .traffic3:
+            hasMetClearNewsReceptionist && !hasEnteredClearNewsElevator
+        case .clearNewsThirdFloor:
+            !hasExitedClearNewsThirdFloorElevator
+        case .homestead, .traffic1, .traffic2:
+            false
+        }
 
         switch currentArea {
         case .homestead:
@@ -643,6 +682,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             addTrafficWorld(includeHomeRoad: true)
         case .traffic2, .traffic3:
             addTrafficWorld(includeHomeRoad: false)
+        case .clearNewsThirdFloor:
+            addClearNewsThirdFloor()
         }
 
         refreshRoomBounds()
@@ -713,6 +754,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         ensureParkedCarForCurrentArea(defaultPoint: GameConstants.parkedCarPoint(for: layout))
     }
 
+    private func addClearNewsThirdFloor() {
+        addClearNewsBuilding(isThirdFloor: true)
+    }
+
     private func addSpawnHouse() {
         let house = HouseNode(layout: GameConstants.spawnHouseLayout, wallHeight: GameConstants.houseWallHeight)
         house.position = position3D(for: GameConstants.spawnHouseLayout.center)
@@ -753,8 +798,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         )
     }
 
-    private func addClearNewsBuilding() {
-        let layout = GameConstants.clearNewsBuildingLayout
+    private func addClearNewsBuilding(isThirdFloor: Bool = false) {
+        let layout = isThirdFloor
+            ? GameConstants.clearNewsThirdFloorLayout
+            : GameConstants.clearNewsBuildingLayout
         let building = SCNNode()
         building.name = "clearNewsBuilding"
 
@@ -789,30 +836,32 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             building.addChildNode(wall)
         }
 
-        let doorRect = layout.frontDoorRect
-        let doorWidth = doorRect.width * 0.92
-        let doorHeight = GameConstants.clearNewsWallHeight * 0.68
-        let doorPivot = SCNNode()
-        doorPivot.name = "clearNewsDoorPivot"
-        doorPivot.position = position3D(
-            for: CGPoint(x: doorRect.minX, y: layout.outerRect.minY - 0.05),
-            elevation: doorHeight / 2
-        )
-
-        let door = SCNNode(
-            geometry: SCNBox(
-                width: doorWidth,
-                height: doorHeight,
-                length: 0.16,
-                chamferRadius: 0.08
+        if !isThirdFloor {
+            let doorRect = layout.frontDoorRect
+            let doorWidth = doorRect.width * 0.92
+            let doorHeight = GameConstants.clearNewsWallHeight * 0.68
+            let doorPivot = SCNNode()
+            doorPivot.name = "clearNewsDoorPivot"
+            doorPivot.position = position3D(
+                for: CGPoint(x: doorRect.minX, y: layout.outerRect.minY - 0.05),
+                elevation: doorHeight / 2
             )
-        )
-        door.name = "clearNewsDoor"
-        door.geometry?.firstMaterial = clearNewsDoorMaterial()
-        door.position = SCNVector3(Float(doorWidth / 2), 0, 0)
-        doorPivot.addChildNode(door)
-        building.addChildNode(doorPivot)
-        clearNewsDoorPivot = doorPivot
+
+            let door = SCNNode(
+                geometry: SCNBox(
+                    width: doorWidth,
+                    height: doorHeight,
+                    length: 0.16,
+                    chamferRadius: 0.08
+                )
+            )
+            door.name = "clearNewsDoor"
+            door.geometry?.firstMaterial = clearNewsDoorMaterial()
+            door.position = SCNVector3(Float(doorWidth / 2), 0, 0)
+            doorPivot.addChildNode(door)
+            building.addChildNode(doorPivot)
+            clearNewsDoorPivot = doorPivot
+        }
 
         let roof = SCNNode(
             geometry: SCNBox(
@@ -828,60 +877,102 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             for: layout.center,
             elevation: GameConstants.clearNewsWallHeight + 0.14
         )
-        addClearNewsInterior(to: building)
+        addClearNewsInterior(to: building, isThirdFloor: isThirdFloor)
         building.addChildNode(roof)
         clearNewsRoofNode = roof
 
-        let sign = SCNNode(
-            geometry: SCNPlane(
-                width: layout.outerRect.width * 0.68,
-                height: 2.5
+        if !isThirdFloor {
+            let sign = SCNNode(
+                geometry: SCNPlane(
+                    width: layout.outerRect.width * 0.68,
+                    height: 2.5
+                )
             )
-        )
-        sign.name = "clearNewsSign"
-        sign.geometry?.firstMaterial = clearNewsSignMaterial()
-        sign.position = position3D(
-            for: CGPoint(x: layout.center.x, y: layout.outerRect.minY - 0.72),
-            elevation: GameConstants.clearNewsWallHeight - 1.35
-        )
-        building.addChildNode(sign)
+            sign.name = "clearNewsSign"
+            sign.geometry?.firstMaterial = clearNewsSignMaterial()
+            sign.position = position3D(
+                for: CGPoint(x: layout.center.x, y: layout.outerRect.minY - 0.72),
+                elevation: GameConstants.clearNewsWallHeight - 1.35
+            )
+            building.addChildNode(sign)
+        }
 
         worldNode.addChildNode(building)
     }
 
-    private func addClearNewsInterior(to building: SCNNode) {
-        let counterRect = GameConstants.clearNewsCounterRect
-        let counter = SCNNode(
-            geometry: SCNBox(
-                width: counterRect.width,
-                height: 1.18,
-                length: counterRect.height,
-                chamferRadius: 0.08
+    private func addClearNewsInterior(to building: SCNNode, isThirdFloor: Bool) {
+        if isThirdFloor {
+            addClearNewsOfficeDoor(to: building)
+        } else {
+            let counterRect = GameConstants.clearNewsCounterRect
+            let counter = SCNNode(
+                geometry: SCNBox(
+                    width: counterRect.width,
+                    height: 1.18,
+                    length: counterRect.height,
+                    chamferRadius: 0.08
+                )
             )
-        )
-        counter.name = "clearNewsCounter"
-        counter.geometry?.firstMaterial = clearNewsCounterMaterial()
-        counter.position = position3D(
-            for: CGPoint(x: counterRect.midX, y: counterRect.midY),
-            elevation: 0.59
-        )
-        building.addChildNode(counter)
+            counter.name = "clearNewsCounter"
+            counter.geometry?.firstMaterial = clearNewsCounterMaterial()
+            counter.position = position3D(
+                for: CGPoint(x: counterRect.midX, y: counterRect.midY),
+                elevation: 0.59
+            )
+            building.addChildNode(counter)
 
-        let clerk = PlayerNode(
-            radius: GameConstants.clearNewsClerkRadius,
-            outfit: .clearNewsClerk
-        )
-        clerk.name = "clearNewsClerk"
-        clerk.setMovementState(.idle)
-        clerk.setFacing(vector: CGVector(dx: 0, dy: -1), animated: false)
-        clerk.position = position3D(
-            for: GameConstants.clearNewsClerkPoint,
-            elevation: GameConstants.clearNewsFloorHeight
-        )
-        building.addChildNode(clerk)
-        clearNewsClerkNode = clerk
+            let clerk = PlayerNode(
+                radius: GameConstants.clearNewsClerkRadius,
+                outfit: .clearNewsClerk
+            )
+            clerk.name = "clearNewsClerk"
+            clerk.setMovementState(.idle)
+            clerk.setFacing(vector: CGVector(dx: 0, dy: -1), animated: false)
+            clerk.position = position3D(
+                for: GameConstants.clearNewsClerkPoint,
+                elevation: GameConstants.clearNewsFloorHeight
+            )
+            building.addChildNode(clerk)
+            clearNewsClerkNode = clerk
+        }
 
         addClearNewsElevator(to: building)
+    }
+
+    private func addClearNewsOfficeDoor(to building: SCNNode) {
+        let doorHeight = GameConstants.clearNewsWallHeight * 0.7
+        let door = SCNNode(
+            geometry: SCNBox(
+                width: GameConstants.clearNewsThirdFloorOfficeDoorWidth,
+                height: doorHeight,
+                length: 0.16,
+                chamferRadius: 0.06
+            )
+        )
+        door.name = "clearNewsOfficeDoor"
+        door.geometry?.firstMaterial = clearNewsDoorMaterial()
+        door.position = position3D(
+            for: GameConstants.clearNewsThirdFloorOfficeDoorPoint,
+            elevation: doorHeight / 2
+        )
+        building.addChildNode(door)
+
+        let plaque = SCNNode(
+            geometry: SCNPlane(
+                width: GameConstants.clearNewsThirdFloorOfficeDoorWidth * 1.22,
+                height: 0.82
+            )
+        )
+        plaque.name = "clearNewsOfficePlaque"
+        plaque.geometry?.firstMaterial = clearNewsOfficePlaqueMaterial()
+        plaque.position = position3D(
+            for: CGPoint(
+                x: GameConstants.clearNewsThirdFloorOfficeDoorPoint.x,
+                y: GameConstants.clearNewsThirdFloorOfficeDoorPoint.y - 0.05
+            ),
+            elevation: doorHeight + 0.72
+        )
+        building.addChildNode(plaque)
     }
 
     private func addClearNewsElevator(to building: SCNNode) {
@@ -1761,8 +1852,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         switch currentArea {
         case .homestead:
             spawnHouseNode?.setRoofHidden(GameConstants.spawnHouseLayout.containsInterior(worldFocusPoint))
-        case .traffic3:
-            clearNewsRoofNode?.isHidden = GameConstants.clearNewsBuildingLayout.containsInterior(worldFocusPoint)
+        case .traffic3, .clearNewsThirdFloor:
+            clearNewsRoofNode?.isHidden = activeClearNewsBuildingLayout.containsInterior(worldFocusPoint)
             clearNewsElevatorRoofNode?.isHidden = GameConstants.clearNewsElevatorLayout.containsInterior(worldFocusPoint)
         case .traffic1, .traffic2:
             return
@@ -1775,7 +1866,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func currentGroundElevation() -> CGFloat {
         guard
-            currentArea == .homestead || currentArea == .traffic3
+            currentArea == .homestead || currentArea == .traffic3 || currentArea == .clearNewsThirdFloor
         else {
             return 0
         }
@@ -1789,9 +1880,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             let floorHeight = GameConstants.houseWallHeight * 0.06
             return foundationHeight + floorHeight
         case .traffic3:
-            guard GameConstants.clearNewsBuildingLayout.containsInterior(worldFocusPoint) else {
+            guard activeClearNewsBuildingLayout.containsInterior(worldFocusPoint) else {
                 return 0
             }
+            return GameConstants.clearNewsFloorHeight
+        case .clearNewsThirdFloor:
             return GameConstants.clearNewsFloorHeight
         case .traffic1, .traffic2:
             return 0
@@ -1823,6 +1916,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                     height: GameConstants.clearNewsClerkRadius * 2
                 )]
                 + trafficCars.map(trafficCarFootprintRect(for:))
+        case .clearNewsThirdFloor:
+            baseBlockedRects = GameConstants.clearNewsThirdFloorLayout.blockedRects(frontDoorOpen: false)
+                + GameConstants.clearNewsElevatorLayout.blockedRects(frontDoorOpen: isClearNewsElevatorDoorOpenState)
         }
 
         guard
@@ -1877,6 +1973,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 proposed: proposed
             )
             setClearNewsDoorOpen(clearNewsDoorShouldOpen, swingDirection: clearNewsSwingDirection)
+        case .clearNewsThirdFloor:
+            isFrontDoorOpen = false
+            spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
+            setClearNewsDoorOpen(false, swingDirection: .outward)
         case .traffic1, .traffic2:
             isFrontDoorOpen = false
             spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
@@ -2001,20 +2101,36 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func updateClearNewsElevatorStateIfNeeded() {
-        guard
-            currentArea == .traffic3,
-            hasMetClearNewsReceptionist,
-            !hasEnteredClearNewsElevator,
-            isClearNewsElevatorDoorOpenState,
-            clearNewsElevatorFullyEnteredRect.contains(worldFocusPoint)
-        else {
+        switch currentArea {
+        case .traffic3:
+            guard
+                hasMetClearNewsReceptionist,
+                !hasEnteredClearNewsElevator,
+                isClearNewsElevatorDoorOpenState,
+                clearNewsElevatorFullyEnteredRect.contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            hasEnteredClearNewsElevator = true
+            setClearNewsElevatorDoorOpen(false)
+            refreshRoomBounds()
+            onClearNewsElevatorSealed?()
+        case .clearNewsThirdFloor:
+            guard
+                !hasExitedClearNewsThirdFloorElevator,
+                isClearNewsElevatorDoorOpenState,
+                !clearNewsElevatorFullyExitedRect.contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            hasExitedClearNewsThirdFloorElevator = true
+            setClearNewsElevatorDoorOpen(false)
+            refreshRoomBounds()
+        case .homestead, .traffic1, .traffic2:
             return
         }
-
-        hasEnteredClearNewsElevator = true
-        setClearNewsElevatorDoorOpen(false)
-        refreshRoomBounds()
-        onClearNewsElevatorSealed?()
     }
 
     private func updateAreaTransitionIfNeeded() {
@@ -2100,6 +2216,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             areaTransitionPending = true
             playerNode.setMovementState(.idle)
             onEastRoadExitReached?()
+        case .clearNewsThirdFloor:
+            return
         }
     }
 
@@ -2254,6 +2372,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func clearNewsSignMaterial() -> SCNMaterial {
         let material = self.material(diffuse: .white, roughness: 0.72)
         material.diffuse.contents = clearNewsSignTexture()
+        material.isDoubleSided = true
+        return material
+    }
+
+    private func clearNewsOfficePlaqueMaterial() -> SCNMaterial {
+        let material = self.material(diffuse: .white, roughness: 0.66)
+        material.diffuse.contents = clearNewsOfficePlaqueTexture()
         material.isDoubleSided = true
         return material
     }
@@ -2436,6 +2561,49 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 height: size.height - 88
             )
             NSString(string: "Clear News").draw(in: textBounds, withAttributes: attributes)
+        }
+    }
+
+    private func clearNewsOfficePlaqueTexture() -> UIImage {
+        let size = CGSize(width: 420, height: 118)
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+
+        let backgroundColor = UIColor(red: 0.12, green: 0.18, blue: 0.11, alpha: 1.0)
+        let borderColor = UIColor(red: 0.83, green: 0.79, blue: 0.62, alpha: 1.0)
+        let textColor = UIColor(red: 0.95, green: 0.94, blue: 0.88, alpha: 1.0)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+
+        let font = UIFont.systemFont(ofSize: 44, weight: .bold)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        return UIGraphicsImageRenderer(size: size, format: format).image { rendererContext in
+            let context = rendererContext.cgContext
+            let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 6)
+            let path = UIBezierPath(roundedRect: bounds, cornerRadius: 14)
+
+            context.setFillColor(backgroundColor.cgColor)
+            context.addPath(path.cgPath)
+            context.fillPath()
+
+            context.setStrokeColor(borderColor.cgColor)
+            context.setLineWidth(6)
+            context.addPath(path.cgPath)
+            context.strokePath()
+
+            let textBounds = CGRect(
+                x: 20,
+                y: 28,
+                width: size.width - 40,
+                height: size.height - 56
+            )
+            NSString(string: "Mr. Johnson").draw(in: textBounds, withAttributes: attributes)
         }
     }
 

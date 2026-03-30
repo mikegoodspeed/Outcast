@@ -1052,8 +1052,33 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
             completion: { _ in
                 self.elevatorControlPanelView.alpha = 0
                 self.elevatorControlPanelView.isHidden = true
+                self.finishClearNewsElevatorTravelTransition()
             }
         )
+    }
+
+    private func finishClearNewsElevatorTravelTransition() {
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+        gameView.prepare([gameScene.scene.rootNode]) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else {
+                    return
+                }
+
+                UIView.animate(
+                    withDuration: GameConstants.clearNewsElevatorFadeDuration,
+                    animations: {
+                        self.sleepFadeView.alpha = 0
+                    },
+                    completion: { _ in
+                        self.sleepFadeView.isHidden = true
+                        self.resetElevatorSequencePresentation()
+                        self.refreshControlState()
+                        self.becomeFirstResponder()
+                    }
+                )
+            }
+        }
     }
 
     private func resetElevatorSequencePresentation() {

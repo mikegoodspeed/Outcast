@@ -288,6 +288,11 @@ enum GameConstants {
         wallThickness: 0.48,
         frontDoorWidth: 3.4
     )
+    static let clearNewsThirdFloorLayout = ShellBuildingLayout(
+        outerRect: clearNewsBuildingLayout.outerRect,
+        wallThickness: clearNewsBuildingLayout.wallThickness,
+        frontDoorWidth: 0
+    )
     static let clearNewsWallHeight: CGFloat = 6.2
     static let clearNewsFloorHeight: CGFloat = 0.08
     static let clearNewsSpawnPoint = CGPoint(
@@ -327,6 +332,14 @@ enum GameConstants {
         x: clearNewsCounterRect.midX,
         y: clearNewsCounterRect.maxY + clearNewsClerkRadius + 0.18
     )
+    static let clearNewsThirdFloorOfficeDoorWidth: CGFloat = 2.3
+    static let clearNewsThirdFloorOfficeDoorPoint: CGPoint = {
+        let interiorRect = clearNewsThirdFloorLayout.interiorRect
+        return CGPoint(
+            x: interiorRect.minX + 2.95,
+            y: clearNewsThirdFloorLayout.outerRect.maxY - 0.04
+        )
+    }()
     static let houseWidth: CGFloat = 6.8
     static let houseDepth: CGFloat = 5.6
     static let houseWallHeight: CGFloat = 3.9
