@@ -19,6 +19,12 @@ final class PlayerNode: SCNNode {
             pantsColor: UIColor(red: 0.18, green: 0.2, blue: 0.24, alpha: 1.0),
             shoesColor: UIColor(red: 0.49, green: 0.51, blue: 0.54, alpha: 1.0)
         )
+
+        static let johnson = Outfit(
+            shirtColor: UIColor(red: 0.57, green: 0.63, blue: 0.71, alpha: 1.0),
+            pantsColor: UIColor(red: 0.24, green: 0.22, blue: 0.2, alpha: 1.0),
+            shoesColor: UIColor(red: 0.14, green: 0.13, blue: 0.12, alpha: 1.0)
+        )
     }
 
     enum MovementState {

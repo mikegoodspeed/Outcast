@@ -660,6 +660,41 @@ final class GameSceneTests: XCTestCase {
         gameScene.completeClearNewsReceptionConversation(named: "Alex")
         gameScene.completeClearNewsElevatorThirdFloorTransition()
 
+        let thresholdPoint = CGPoint(
+            x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
+            y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 0.06
+        )
+        gameScene.setPlayerPosition(
+            thresholdPoint,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+
+        advance(gameScene, renderer: renderer, frames: 0...5, input: CGVector(dx: 0, dy: 1))
+
+        let officeDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeDoor", recursively: true))
+        let desk = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeDesk", recursively: true))
+        let johnson = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeJohnson", recursively: true))
+        let lamp = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeLamp", recursively: true))
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsOffice")
+        XCTAssertNotNil(officeDoor.geometry as? SCNBox)
+        XCTAssertNotNil(desk.geometry as? SCNBox)
+        XCTAssertTrue(CGFloat(-johnson.position.z) > CGFloat(-desk.position.z))
+        XCTAssertEqual(CGFloat(lamp.position.x), GameConstants.clearNewsOfficeLampPoint.x, accuracy: 0.001)
+        XCTAssertEqual(CGFloat(-lamp.position.z), GameConstants.clearNewsOfficeLampPoint.y, accuracy: 0.001)
+        XCTAssertNil(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficePlaque", recursively: true))
+        XCTAssertTrue(GameConstants.clearNewsOfficeLayout.containsInterior(gameScene.currentPlayerPosition))
+    }
+
+    func testClearNewsThirdFloorOfficeDoorSwingsBeforeOfficeTransition() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.spawn(at: .clearNews)
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+
         let approachPoint = CGPoint(
             x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
             y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 1.3
@@ -669,16 +704,12 @@ final class GameSceneTests: XCTestCase {
             heading: CGVector(dx: 0, dy: 1)
         )
 
-        advance(gameScene, renderer: renderer, frames: 0...18, input: CGVector(dx: 0, dy: 1))
+        advance(gameScene, renderer: renderer, frames: 0...2, input: CGVector(dx: 0, dy: 1))
 
-        let officeDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeDoor", recursively: true))
-        let desk = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeDesk", recursively: true))
+        let officeDoorPivot = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficeDoorPivot", recursively: true))
 
-        XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsOffice")
-        XCTAssertNotNil(officeDoor.geometry as? SCNBox)
-        XCTAssertNotNil(desk.geometry as? SCNBox)
-        XCTAssertNil(gameScene.scene.rootNode.childNode(withName: "clearNewsOfficePlaque", recursively: true))
-        XCTAssertTrue(GameConstants.clearNewsOfficeLayout.containsInterior(gameScene.currentPlayerPosition))
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsThirdFloor")
+        XCTAssertGreaterThan(abs(officeDoorPivot.eulerAngles.y), 0.1)
     }
 
     func testExitingClearNewsOfficeDoorReturnsToThirdFloor() {
@@ -690,15 +721,15 @@ final class GameSceneTests: XCTestCase {
         gameScene.completeClearNewsReceptionConversation(named: "Alex")
         gameScene.completeClearNewsElevatorThirdFloorTransition()
 
-        let thirdFloorApproachPoint = CGPoint(
+        let thirdFloorThresholdPoint = CGPoint(
             x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
-            y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 1.3
+            y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 0.06
         )
         gameScene.setPlayerPosition(
-            thirdFloorApproachPoint,
+            thirdFloorThresholdPoint,
             heading: CGVector(dx: 0, dy: 1)
         )
-        advance(gameScene, renderer: renderer, frames: 0...18, input: CGVector(dx: 0, dy: 1))
+        advance(gameScene, renderer: renderer, frames: 0...5, input: CGVector(dx: 0, dy: 1))
 
         let officeExitApproachPoint = CGPoint(
             x: GameConstants.clearNewsOfficeLayout.frontDoorRect.midX,
@@ -708,7 +739,7 @@ final class GameSceneTests: XCTestCase {
             officeExitApproachPoint,
             heading: CGVector(dx: 0, dy: -1)
         )
-        advance(gameScene, renderer: renderer, frames: 19...37, input: CGVector(dx: 0, dy: -1))
+        advance(gameScene, renderer: renderer, frames: 6...11, input: CGVector(dx: 0, dy: -1))
 
         XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsThirdFloor")
         XCTAssertTrue(GameConstants.clearNewsThirdFloorLayout.containsInterior(gameScene.currentPlayerPosition))

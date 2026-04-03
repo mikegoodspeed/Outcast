@@ -388,6 +388,21 @@ enum GameConstants {
         x: clearNewsOfficeDeskRect.midX,
         y: clearNewsOfficeDeskRect.minY - 0.86
     )
+    static let clearNewsOfficeJohnsonRadius: CGFloat = playerRadius * 0.9
+    static let clearNewsOfficeJohnsonPoint = CGPoint(
+        x: clearNewsOfficeDeskRect.midX,
+        y: clearNewsOfficeDeskRect.maxY - clearNewsOfficeJohnsonRadius - 0.08
+    )
+    static let clearNewsOfficeLampPoint = CGPoint(
+        x: clearNewsOfficeLayout.interiorRect.maxX - 0.82,
+        y: clearNewsOfficeLayout.interiorRect.maxY - 0.82
+    )
+    static let clearNewsOfficeLampRect = CGRect(
+        x: clearNewsOfficeLampPoint.x - 0.24,
+        y: clearNewsOfficeLampPoint.y - 0.24,
+        width: 0.48,
+        height: 0.48
+    )
     static let clearNewsOfficeBookshelfRect = CGRect(
         x: clearNewsOfficeLayout.interiorRect.minX + 0.72,
         y: clearNewsOfficeLayout.interiorRect.maxY - 2.5,

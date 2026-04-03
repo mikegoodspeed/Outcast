@@ -182,6 +182,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var clearNewsDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
     private var isClearNewsDoorOpen = false
     private var isClearNewsOfficeDoorOpen = false
+    private var clearNewsOfficeDoorOpenElapsed: TimeInterval = 0
     private var clearNewsOfficeDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
     private var clearNewsOfficeDoorWallOrientation: DoorWallOrientation = .north
     private var isClearNewsElevatorDoorOpenState = false
@@ -629,6 +630,11 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             y: worldFocusPoint.y + (movementVector.dy * travelSpeed * deltaTime)
         )
         updateDoorStates(current: worldFocusPoint, proposed: proposedPoint)
+        if isClearNewsOfficeDoorOpen {
+            clearNewsOfficeDoorOpenElapsed += deltaTime
+        } else {
+            clearNewsOfficeDoorOpenElapsed = 0
+        }
         refreshRoomBounds()
 
         let previousFocusPoint = worldFocusPoint
@@ -719,6 +725,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         isFrontDoorOpen = false
         isClearNewsDoorOpen = false
         isClearNewsOfficeDoorOpen = false
+        clearNewsOfficeDoorOpenElapsed = 0
         clearNewsDoorSwingDirection = .outward
         clearNewsOfficeDoorSwingDirection = .outward
         clearNewsOfficeDoorWallOrientation = .north
@@ -750,6 +757,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         isFrontDoorOpen = false
         isClearNewsDoorOpen = false
         isClearNewsOfficeDoorOpen = false
+        clearNewsOfficeDoorOpenElapsed = 0
         roomBounds = RoomBounds(rect: activeMovementRect, blockedRects: currentBlockedRects())
         worldNode.childNodes.forEach { $0.removeFromParentNode() }
         spawnHouseNode = nil
@@ -1263,6 +1271,60 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             elevation: 0.38
         )
         building.addChildNode(chair)
+
+        let johnson = PlayerNode(
+            radius: GameConstants.clearNewsOfficeJohnsonRadius,
+            outfit: .johnson
+        )
+        johnson.name = "clearNewsOfficeJohnson"
+        johnson.setMovementState(.idle)
+        johnson.setFacing(vector: CGVector(dx: 0, dy: -1), animated: false)
+        johnson.position = position3D(
+            for: GameConstants.clearNewsOfficeJohnsonPoint,
+            elevation: GameConstants.clearNewsFloorHeight
+        )
+        building.addChildNode(johnson)
+
+        let lamp = SCNNode()
+        lamp.name = "clearNewsOfficeLamp"
+        lamp.position = position3D(for: GameConstants.clearNewsOfficeLampPoint)
+
+        let lampBase = SCNNode(geometry: SCNCylinder(radius: 0.18, height: 0.08))
+        lampBase.name = "clearNewsOfficeLampBase"
+        lampBase.geometry?.firstMaterial = clearNewsOfficeLampMetalMaterial()
+        lampBase.position = SCNVector3(0, 0.04, 0)
+        lamp.addChildNode(lampBase)
+
+        let lampPole = SCNNode(geometry: SCNCylinder(radius: 0.05, height: 2.15))
+        lampPole.name = "clearNewsOfficeLampPole"
+        lampPole.geometry?.firstMaterial = clearNewsOfficeLampMetalMaterial()
+        lampPole.position = SCNVector3(0, 1.08, 0)
+        lamp.addChildNode(lampPole)
+
+        let lampShade = SCNNode(geometry: SCNCylinder(radius: 0.34, height: 0.46))
+        lampShade.name = "clearNewsOfficeLampShade"
+        lampShade.geometry?.firstMaterial = clearNewsOfficeLampShadeMaterial()
+        lampShade.position = SCNVector3(0, 2.26, 0)
+        lamp.addChildNode(lampShade)
+
+        let lampBulb = SCNNode(geometry: SCNSphere(radius: 0.1))
+        lampBulb.name = "clearNewsOfficeLampBulb"
+        lampBulb.geometry?.firstMaterial = clearNewsOfficeLampBulbMaterial()
+        lampBulb.position = SCNVector3(0, 2.16, 0)
+        lamp.addChildNode(lampBulb)
+
+        let lampLight = SCNNode()
+        lampLight.name = "clearNewsOfficeLampLight"
+        lampLight.light = SCNLight()
+        lampLight.light?.type = .omni
+        lampLight.light?.color = UIColor(red: 1.0, green: 0.93, blue: 0.76, alpha: 1.0)
+        lampLight.light?.intensity = 720
+        lampLight.light?.attenuationStartDistance = 1.0
+        lampLight.light?.attenuationEndDistance = 8.0
+        lampLight.position = SCNVector3(0, 2.1, 0)
+        lamp.addChildNode(lampLight)
+
+        building.addChildNode(lamp)
 
         let bookshelfRect = GameConstants.clearNewsOfficeBookshelfRect
         let bookshelf = SCNNode(
@@ -2239,6 +2301,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                         width: 0.76,
                         height: 0.76
                     ),
+                    CGRect(
+                        x: GameConstants.clearNewsOfficeJohnsonPoint.x - GameConstants.clearNewsOfficeJohnsonRadius,
+                        y: GameConstants.clearNewsOfficeJohnsonPoint.y - GameConstants.clearNewsOfficeJohnsonRadius,
+                        width: GameConstants.clearNewsOfficeJohnsonRadius * 2,
+                        height: GameConstants.clearNewsOfficeJohnsonRadius * 2
+                    ),
+                    GameConstants.clearNewsOfficeLampRect,
                     GameConstants.clearNewsOfficeBookshelfRect
                 ]
         }
@@ -2376,7 +2445,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         let openAngle: Float = swingDirection == .inward ? -.pi / 2.35 : .pi / 2.35
         SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0.16
+        SCNTransaction.animationDuration = 0.24
         clearNewsDoorPivot?.eulerAngles.y = isOpen ? openAngle : 0
         SCNTransaction.commit()
     }
@@ -2407,7 +2476,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         }
 
         SCNTransaction.begin()
-        SCNTransaction.animationDuration = 0.16
+        SCNTransaction.animationDuration = 0.24
         clearNewsOfficeDoorPivot?.eulerAngles.y = isOpen ? openAngle : 0
         SCNTransaction.commit()
     }
@@ -2612,6 +2681,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case .clearNewsThirdFloor:
             guard
                 isClearNewsOfficeDoorOpen,
+                clearNewsOfficeDoorOpenElapsed >= 0.1,
                 clearNewsThirdFloorOfficeTransitionRect.contains(worldFocusPoint)
             else {
                 return
@@ -2625,6 +2695,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case .clearNewsOffice:
             guard
                 isClearNewsOfficeDoorOpen,
+                clearNewsOfficeDoorOpenElapsed >= 0.1,
                 clearNewsOfficeExitTransitionRect.contains(worldFocusPoint)
             else {
                 return
@@ -2779,6 +2850,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         )
     }
 
+    private func clearNewsOfficeLampMetalMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.41, green: 0.38, blue: 0.34, alpha: 1.0),
+            roughness: 0.4
+        )
+    }
+
+    private func clearNewsOfficeLampShadeMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.92, green: 0.87, blue: 0.73, alpha: 1.0),
+            roughness: 0.68
+        )
+    }
+
+    private func clearNewsOfficeLampBulbMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 1.0, green: 0.96, blue: 0.82, alpha: 1.0),
+            roughness: 0.18
+        )
+    }
+
     private func clearNewsPrinterMaterial() -> SCNMaterial {
         material(
             diffuse: UIColor(red: 0.86, green: 0.87, blue: 0.84, alpha: 1.0),
@@ -2806,6 +2898,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             roughness: 0.86
         )
     }
+
 
     private func clearNewsCounterMaterial() -> SCNMaterial {
         material(
