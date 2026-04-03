@@ -14,6 +14,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case traffic2
         case traffic3
         case clearNewsThirdFloor
+        case clearNewsOffice
 
         var isTrafficArea: Bool {
             switch self {
@@ -21,10 +22,15 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 return false
             case .traffic1, .traffic2, .traffic3:
                 return true
-            case .clearNewsThirdFloor:
+            case .clearNewsThirdFloor, .clearNewsOffice:
                 return false
             }
         }
+    }
+
+    private enum DoorWallOrientation {
+        case north
+        case south
     }
 
     private enum RoadOrientation {
@@ -127,6 +133,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var currentPlayerName: String? {
         storedPlayerName
     }
+    var currentPlayerPosition: CGPoint {
+        worldFocusPoint
+    }
     var currentCameraFieldOfView: CGFloat {
         cameraNode.camera?.fieldOfView ?? GameConstants.cameraFieldOfView
     }
@@ -145,6 +154,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return "traffic3"
         case .clearNewsThirdFloor:
             return "clearNewsThirdFloor"
+        case .clearNewsOffice:
+            return "clearNewsOffice"
         }
     }
 
@@ -161,6 +172,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var spawnHouseNode: HouseNode?
     private var clearNewsRoofNode: SCNNode?
     private var clearNewsDoorPivot: SCNNode?
+    private var clearNewsOfficeDoorPivot: SCNNode?
     private var clearNewsElevatorRoofNode: SCNNode?
     private var clearNewsClerkNode: SCNNode?
     private var clearNewsElevatorLeftDoorNode: SCNNode?
@@ -169,6 +181,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var isFrontDoorOpen = false
     private var clearNewsDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
     private var isClearNewsDoorOpen = false
+    private var isClearNewsOfficeDoorOpen = false
+    private var clearNewsOfficeDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
+    private var clearNewsOfficeDoorWallOrientation: DoorWallOrientation = .north
     private var isClearNewsElevatorDoorOpenState = false
     private var hasMetClearNewsReceptionist = false
     private var hasEnteredClearNewsElevator = false
@@ -195,12 +210,14 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return activeTrafficLayout.movementRect
         case .clearNewsThirdFloor:
             return GameConstants.clearNewsThirdFloorLayout.interiorRect
+        case .clearNewsOffice:
+            return GameConstants.clearNewsOfficeLayout.interiorRect
         }
     }
 
     private var activeTrafficLayout: CrossroadsLayout {
         switch currentArea {
-        case .homestead, .traffic1, .traffic2, .clearNewsThirdFloor:
+        case .homestead, .traffic1, .traffic2, .clearNewsThirdFloor, .clearNewsOffice:
             return GameConstants.crossroadsLayout
         case .traffic3:
             return GameConstants.traffic3Layout
@@ -219,20 +236,93 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             return GameConstants.traffic3Layout.eastTransitionPoint
         case .clearNewsThirdFloor:
             return GameConstants.clearNewsElevatorLayout.center
+        case .clearNewsOffice:
+            return GameConstants.clearNewsOfficeSpawnPoint
         }
     }
 
     private var activeClearNewsBuildingLayout: ShellBuildingLayout {
-        currentArea == .clearNewsThirdFloor
-            ? GameConstants.clearNewsThirdFloorLayout
-            : GameConstants.clearNewsBuildingLayout
+        switch currentArea {
+        case .clearNewsThirdFloor:
+            return GameConstants.clearNewsThirdFloorLayout
+        case .clearNewsOffice:
+            return GameConstants.clearNewsOfficeLayout
+        case .homestead, .traffic1, .traffic2, .traffic3:
+            return GameConstants.clearNewsBuildingLayout
+        }
     }
 
-    private var clearNewsElevatorFullyExitedRect: CGRect {
+    private var clearNewsThirdFloorWallRects: [CGRect] {
+        let layout = GameConstants.clearNewsThirdFloorLayout
+        let officeDoorRect = GameConstants.clearNewsThirdFloorOfficeDoorRect
+        let southWallRects = layout.southWallSegments
+        let northWallRect = CGRect(
+            x: layout.outerRect.minX,
+            y: layout.outerRect.maxY - (layout.wallThickness / 2),
+            width: layout.outerRect.width,
+            height: layout.wallThickness
+        )
+        let northWallSegments = [
+            CGRect(
+                x: northWallRect.minX,
+                y: northWallRect.minY,
+                width: officeDoorRect.minX - northWallRect.minX,
+                height: northWallRect.height
+            ),
+            CGRect(
+                x: officeDoorRect.maxX,
+                y: northWallRect.minY,
+                width: northWallRect.maxX - officeDoorRect.maxX,
+                height: northWallRect.height
+            )
+        ].filter { $0.width > 0 && $0.height > 0 }
+
+        return layout.wallRects.filter { wallRect in
+            wallRect != northWallRect && !southWallRects.contains(wallRect)
+        } + northWallSegments
+    }
+
+    private var clearNewsThirdFloorBlockedRects: [CGRect] {
+        clearNewsThirdFloorWallRects
+            + (isClearNewsOfficeDoorOpen ? [] : [GameConstants.clearNewsThirdFloorOfficeDoorRect])
+            + [GameConstants.clearNewsThirdFloorPrinterRect]
+    }
+
+    private var clearNewsThirdFloorOfficeTransitionRect: CGRect {
+        let layout = GameConstants.clearNewsThirdFloorLayout
+        let doorRect = GameConstants.clearNewsThirdFloorOfficeDoorRect.insetBy(
+            dx: GameConstants.playerRadius * 0.55,
+            dy: 0
+        )
+        return CGRect(
+            x: doorRect.minX,
+            y: layout.interiorRect.maxY - (GameConstants.playerRadius + 0.2),
+            width: doorRect.width,
+            height: GameConstants.playerRadius + 0.2
+        )
+    }
+
+    private var clearNewsOfficeExitTransitionRect: CGRect {
+        let layout = GameConstants.clearNewsOfficeLayout
+        let doorRect = layout.frontDoorRect.insetBy(
+            dx: GameConstants.playerRadius * 0.55,
+            dy: 0
+        )
+        return CGRect(
+            x: doorRect.minX,
+            y: layout.interiorRect.minY,
+            width: doorRect.width,
+            height: GameConstants.playerRadius + 0.2
+        )
+    }
+
+    private var clearNewsElevatorExitClearanceRect: CGRect {
         let movementRadius = isDrivingParkedCar ? GameConstants.parkedCarMovementRadius : GameConstants.playerRadius
-        return GameConstants.clearNewsElevatorLayout.interiorRect.insetBy(
-            dx: -movementRadius,
-            dy: -movementRadius
+        return GameConstants.clearNewsElevatorLayout.interiorRect.union(
+            GameConstants.clearNewsElevatorLayout.frontDoorRect.insetBy(
+                dx: -movementRadius,
+                dy: -movementRadius
+            )
         )
     }
 
@@ -332,7 +422,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             destinationArea = .traffic2
         case .traffic2:
             destinationArea = .traffic3
-        case .homestead, .traffic3, .clearNewsThirdFloor:
+        case .homestead, .traffic3, .clearNewsThirdFloor, .clearNewsOffice:
             return
         }
 
@@ -352,7 +442,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             destinationArea = .traffic1
         case .traffic3:
             destinationArea = .traffic2
-        case .homestead, .traffic1, .clearNewsThirdFloor:
+        case .homestead, .traffic1, .clearNewsThirdFloor, .clearNewsOffice:
             return
         }
 
@@ -628,7 +718,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         areaTransitionPending = false
         isFrontDoorOpen = false
         isClearNewsDoorOpen = false
+        isClearNewsOfficeDoorOpen = false
         clearNewsDoorSwingDirection = .outward
+        clearNewsOfficeDoorSwingDirection = .outward
+        clearNewsOfficeDoorWallOrientation = .north
         setCameraFocusMode(.player, animated: false)
         sleepReturnPoint = nil
         bedSequence = nil
@@ -656,11 +749,13 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func configureWorld() {
         isFrontDoorOpen = false
         isClearNewsDoorOpen = false
+        isClearNewsOfficeDoorOpen = false
         roomBounds = RoomBounds(rect: activeMovementRect, blockedRects: currentBlockedRects())
         worldNode.childNodes.forEach { $0.removeFromParentNode() }
         spawnHouseNode = nil
         clearNewsRoofNode = nil
         clearNewsDoorPivot = nil
+        clearNewsOfficeDoorPivot = nil
         clearNewsElevatorRoofNode = nil
         clearNewsClerkNode = nil
         clearNewsElevatorLeftDoorNode = nil
@@ -671,7 +766,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             hasMetClearNewsReceptionist && !hasEnteredClearNewsElevator
         case .clearNewsThirdFloor:
             !hasExitedClearNewsThirdFloorElevator
-        case .homestead, .traffic1, .traffic2:
+        case .homestead, .traffic1, .traffic2, .clearNewsOffice:
             false
         }
 
@@ -684,6 +779,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             addTrafficWorld(includeHomeRoad: false)
         case .clearNewsThirdFloor:
             addClearNewsThirdFloor()
+        case .clearNewsOffice:
+            addClearNewsOffice()
         }
 
         refreshRoomBounds()
@@ -758,6 +855,71 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         addClearNewsBuilding(isThirdFloor: true)
     }
 
+    private func addClearNewsOffice() {
+        let layout = GameConstants.clearNewsOfficeLayout
+        let office = SCNNode()
+        office.name = "clearNewsOffice"
+
+        let floor = SCNNode(
+            geometry: SCNBox(
+                width: layout.interiorRect.width,
+                height: 0.08,
+                length: layout.interiorRect.height,
+                chamferRadius: 0.14
+            )
+        )
+        floor.name = "clearNewsFloor"
+        floor.geometry?.firstMaterial = clearNewsFloorMaterial()
+        floor.position = position3D(for: layout.center, elevation: GameConstants.clearNewsFloorHeight / 2)
+        office.addChildNode(floor)
+
+        for (index, wallRect) in layout.wallRects.enumerated() {
+            let wall = SCNNode(
+                geometry: SCNBox(
+                    width: wallRect.width,
+                    height: GameConstants.clearNewsWallHeight,
+                    length: wallRect.height,
+                    chamferRadius: 0.1
+                )
+            )
+            wall.name = "clearNewsOfficeWall\(index)"
+            wall.geometry?.firstMaterial = clearNewsWallMaterial()
+            wall.position = position3D(
+                for: CGPoint(x: wallRect.midX, y: wallRect.midY),
+                elevation: GameConstants.clearNewsWallHeight / 2
+            )
+            office.addChildNode(wall)
+        }
+
+        addClearNewsOfficeDoor(
+            to: office,
+            layout: layout,
+            doorRect: layout.frontDoorRect,
+            wallOrientation: .south,
+            showsPlaque: false
+        )
+        addClearNewsOfficeInterior(to: office)
+
+        let roof = SCNNode(
+            geometry: SCNBox(
+                width: layout.outerRect.width + 0.8,
+                height: 0.28,
+                length: layout.outerRect.height + 0.8,
+                chamferRadius: 0.2
+            )
+        )
+        roof.name = "clearNewsRoof"
+        roof.geometry?.firstMaterial = clearNewsRoofMaterial()
+        roof.position = position3D(
+            for: layout.center,
+            elevation: GameConstants.clearNewsWallHeight + 0.14
+        )
+        office.addChildNode(roof)
+        clearNewsRoofNode = roof
+
+        worldNode.addChildNode(office)
+    }
+
     private func addSpawnHouse() {
         let house = HouseNode(layout: GameConstants.spawnHouseLayout, wallHeight: GameConstants.houseWallHeight)
         house.position = position3D(for: GameConstants.spawnHouseLayout.center)
@@ -818,7 +980,8 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         floor.position = position3D(for: layout.center, elevation: GameConstants.clearNewsFloorHeight / 2)
         building.addChildNode(floor)
 
-        for (index, wallRect) in layout.wallRects.enumerated() {
+        let wallRects = isThirdFloor ? clearNewsThirdFloorWallRects : layout.wallRects
+        for (index, wallRect) in wallRects.enumerated() {
             let wall = SCNNode(
                 geometry: SCNBox(
                     width: wallRect.width,
@@ -903,6 +1066,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private func addClearNewsInterior(to building: SCNNode, isThirdFloor: Bool) {
         if isThirdFloor {
             addClearNewsOfficeDoor(to: building)
+            addClearNewsPrinter(to: building)
         } else {
             let counterRect = GameConstants.clearNewsCounterRect
             let counter = SCNNode(
@@ -939,40 +1103,183 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         addClearNewsElevator(to: building)
     }
 
-    private func addClearNewsOfficeDoor(to building: SCNNode) {
+    private func addClearNewsOfficeDoor(
+        to building: SCNNode,
+        layout: ShellBuildingLayout = GameConstants.clearNewsThirdFloorLayout,
+        doorRect: CGRect = GameConstants.clearNewsThirdFloorOfficeDoorRect,
+        wallOrientation: DoorWallOrientation = .north,
+        showsPlaque: Bool = true
+    ) {
         let doorHeight = GameConstants.clearNewsWallHeight * 0.7
+        let doorWidth = doorRect.width * 0.94
+        let doorPivot = SCNNode()
+        doorPivot.name = "clearNewsOfficeDoorPivot"
+        doorPivot.position = position3D(
+            for: CGPoint(
+                x: doorRect.minX,
+                y: wallOrientation == .north
+                    ? layout.outerRect.maxY + 0.05
+                    : layout.outerRect.minY - 0.05
+            ),
+            elevation: doorHeight / 2
+        )
+
         let door = SCNNode(
             geometry: SCNBox(
-                width: GameConstants.clearNewsThirdFloorOfficeDoorWidth,
+                width: doorWidth,
                 height: doorHeight,
                 length: 0.16,
                 chamferRadius: 0.06
             )
         )
         door.name = "clearNewsOfficeDoor"
-        door.geometry?.firstMaterial = clearNewsDoorMaterial()
-        door.position = position3D(
-            for: GameConstants.clearNewsThirdFloorOfficeDoorPoint,
-            elevation: doorHeight / 2
-        )
-        building.addChildNode(door)
+        door.geometry?.firstMaterial = clearNewsOfficeDoorMaterial()
+        door.position = SCNVector3(Float(doorWidth / 2), 0, 0)
+        doorPivot.addChildNode(door)
+        building.addChildNode(doorPivot)
+        clearNewsOfficeDoorPivot = doorPivot
+        clearNewsOfficeDoorWallOrientation = wallOrientation
+
+        guard showsPlaque else {
+            return
+        }
 
         let plaque = SCNNode(
             geometry: SCNPlane(
-                width: GameConstants.clearNewsThirdFloorOfficeDoorWidth * 1.22,
-                height: 0.82
+                width: doorRect.width * 1.7,
+                height: 1.35
             )
         )
         plaque.name = "clearNewsOfficePlaque"
         plaque.geometry?.firstMaterial = clearNewsOfficePlaqueMaterial()
         plaque.position = position3D(
-            for: CGPoint(
-                x: GameConstants.clearNewsThirdFloorOfficeDoorPoint.x,
-                y: GameConstants.clearNewsThirdFloorOfficeDoorPoint.y - 0.05
-            ),
+            for: CGPoint(x: doorRect.midX, y: doorRect.midY - 0.14),
             elevation: doorHeight + 0.72
         )
         building.addChildNode(plaque)
+    }
+
+    private func addClearNewsPrinter(to building: SCNNode) {
+        let printer = SCNNode()
+        printer.name = "clearNewsPrinter"
+        printer.position = position3D(
+            for: GameConstants.clearNewsThirdFloorPrinterPoint,
+            elevation: 0
+        )
+        printer.eulerAngles.y = -.pi / 10
+
+        let body = SCNNode(
+            geometry: SCNBox(
+                width: 1.02,
+                height: 1.08,
+                length: 0.76,
+                chamferRadius: 0.04
+            )
+        )
+        body.name = "clearNewsPrinterBody"
+        body.geometry?.firstMaterial = clearNewsPrinterMaterial()
+        body.position.y = 0.54
+        printer.addChildNode(body)
+
+        let top = SCNNode(
+            geometry: SCNBox(
+                width: 1.12,
+                height: 0.14,
+                length: 0.88,
+                chamferRadius: 0.03
+            )
+        )
+        top.name = "clearNewsPrinterTop"
+        top.geometry?.firstMaterial = clearNewsPrinterTopMaterial()
+        top.position = SCNVector3(0, 1.16, -0.03)
+        printer.addChildNode(top)
+
+        let paperDoor = SCNNode(
+            geometry: SCNBox(
+                width: 0.64,
+                height: 0.36,
+                length: 0.04,
+                chamferRadius: 0.02
+            )
+        )
+        paperDoor.name = "clearNewsPrinterPaperDoor"
+        paperDoor.geometry?.firstMaterial = clearNewsPrinterMaterial()
+        paperDoor.position = SCNVector3(0, 0.48, 0.37)
+        printer.addChildNode(paperDoor)
+
+        let outputTray = SCNNode(
+            geometry: SCNBox(
+                width: 0.6,
+                height: 0.05,
+                length: 0.3,
+                chamferRadius: 0.02
+            )
+        )
+        outputTray.name = "clearNewsPrinterOutputTray"
+        outputTray.geometry?.firstMaterial = clearNewsPrinterTopMaterial()
+        outputTray.position = SCNVector3(0, 1.01, 0.45)
+        printer.addChildNode(outputTray)
+
+        let panel = SCNNode(
+            geometry: SCNPlane(
+                width: 0.34,
+                height: 0.16
+            )
+        )
+        panel.name = "clearNewsPrinterPanel"
+        panel.geometry?.firstMaterial = clearNewsPrinterPanelMaterial()
+        panel.position = SCNVector3(0.21, 1.04, 0.395)
+        panel.eulerAngles.x = -.pi / 2
+        printer.addChildNode(panel)
+
+        building.addChildNode(printer)
+    }
+
+    private func addClearNewsOfficeInterior(to building: SCNNode) {
+        let deskRect = GameConstants.clearNewsOfficeDeskRect
+        let desk = SCNNode(
+            geometry: SCNBox(
+                width: deskRect.width,
+                height: 0.92,
+                length: deskRect.height,
+                chamferRadius: 0.08
+            )
+        )
+        desk.name = "clearNewsOfficeDesk"
+        desk.geometry?.firstMaterial = clearNewsOfficeDeskMaterial()
+        desk.position = position3D(
+            for: CGPoint(x: deskRect.midX, y: deskRect.midY),
+            elevation: 0.46
+        )
+        building.addChildNode(desk)
+
+        let chair = SCNNode(
+            geometry: SCNCylinder(radius: 0.34, height: 0.76)
+        )
+        chair.name = "clearNewsOfficeChair"
+        chair.geometry?.firstMaterial = clearNewsOfficeChairMaterial()
+        chair.position = position3D(
+            for: GameConstants.clearNewsOfficeChairPoint,
+            elevation: 0.38
+        )
+        building.addChildNode(chair)
+
+        let bookshelfRect = GameConstants.clearNewsOfficeBookshelfRect
+        let bookshelf = SCNNode(
+            geometry: SCNBox(
+                width: bookshelfRect.width,
+                height: 2.3,
+                length: bookshelfRect.height,
+                chamferRadius: 0.04
+            )
+        )
+        bookshelf.name = "clearNewsOfficeBookshelf"
+        bookshelf.geometry?.firstMaterial = clearNewsOfficeDeskMaterial()
+        bookshelf.position = position3D(
+            for: CGPoint(x: bookshelfRect.midX, y: bookshelfRect.midY),
+            elevation: 1.15
+        )
+        building.addChildNode(bookshelf)
     }
 
     private func addClearNewsElevator(to building: SCNNode) {
@@ -1852,7 +2159,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         switch currentArea {
         case .homestead:
             spawnHouseNode?.setRoofHidden(GameConstants.spawnHouseLayout.containsInterior(worldFocusPoint))
-        case .traffic3, .clearNewsThirdFloor:
+        case .traffic3, .clearNewsThirdFloor, .clearNewsOffice:
             clearNewsRoofNode?.isHidden = activeClearNewsBuildingLayout.containsInterior(worldFocusPoint)
             clearNewsElevatorRoofNode?.isHidden = GameConstants.clearNewsElevatorLayout.containsInterior(worldFocusPoint)
         case .traffic1, .traffic2:
@@ -1866,7 +2173,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     private func currentGroundElevation() -> CGFloat {
         guard
-            currentArea == .homestead || currentArea == .traffic3 || currentArea == .clearNewsThirdFloor
+            currentArea == .homestead
+                || currentArea == .traffic3
+                || currentArea == .clearNewsThirdFloor
+                || currentArea == .clearNewsOffice
         else {
             return 0
         }
@@ -1884,7 +2194,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 return 0
             }
             return GameConstants.clearNewsFloorHeight
-        case .clearNewsThirdFloor:
+        case .clearNewsThirdFloor, .clearNewsOffice:
             return GameConstants.clearNewsFloorHeight
         case .traffic1, .traffic2:
             return 0
@@ -1917,8 +2227,20 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 )]
                 + trafficCars.map(trafficCarFootprintRect(for:))
         case .clearNewsThirdFloor:
-            baseBlockedRects = GameConstants.clearNewsThirdFloorLayout.blockedRects(frontDoorOpen: false)
+            baseBlockedRects = clearNewsThirdFloorBlockedRects
                 + GameConstants.clearNewsElevatorLayout.blockedRects(frontDoorOpen: isClearNewsElevatorDoorOpenState)
+        case .clearNewsOffice:
+            baseBlockedRects = GameConstants.clearNewsOfficeLayout.blockedRects(frontDoorOpen: isClearNewsOfficeDoorOpen)
+                + [
+                    GameConstants.clearNewsOfficeDeskRect,
+                    CGRect(
+                        x: GameConstants.clearNewsOfficeChairPoint.x - 0.38,
+                        y: GameConstants.clearNewsOfficeChairPoint.y - 0.38,
+                        width: 0.76,
+                        height: 0.76
+                    ),
+                    GameConstants.clearNewsOfficeBookshelfRect
+                ]
         }
 
         guard
@@ -1937,6 +2259,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             isFrontDoorOpen = false
             spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
             setClearNewsDoorOpen(false, swingDirection: .outward)
+            setClearNewsOfficeDoorOpen(false, swingDirection: .outward, wallOrientation: clearNewsOfficeDoorWallOrientation)
             return
         }
 
@@ -1957,6 +2280,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             isFrontDoorOpen = frontDoorShouldOpen
             spawnHouseNode?.setFrontDoorOpen(frontDoorShouldOpen, swingDirection: frontDoorSwingDirection)
             setClearNewsDoorOpen(false, swingDirection: .outward)
+            setClearNewsOfficeDoorOpen(false, swingDirection: .outward, wallOrientation: clearNewsOfficeDoorWallOrientation)
         case .traffic3:
             isFrontDoorOpen = false
             spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
@@ -1973,14 +2297,52 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 proposed: proposed
             )
             setClearNewsDoorOpen(clearNewsDoorShouldOpen, swingDirection: clearNewsSwingDirection)
+            setClearNewsOfficeDoorOpen(false, swingDirection: .outward, wallOrientation: clearNewsOfficeDoorWallOrientation)
         case .clearNewsThirdFloor:
             isFrontDoorOpen = false
             spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
             setClearNewsDoorOpen(false, swingDirection: .outward)
+            let officeDoorShouldOpen = shouldOpenDoor(
+                openingRect: GameConstants.clearNewsThirdFloorOfficeDoorRect,
+                current: current,
+                proposed: proposed
+            )
+            let officeDoorSwingDirection = swingDirection(
+                openingRect: GameConstants.clearNewsThirdFloorOfficeDoorRect,
+                containsInterior: GameConstants.clearNewsThirdFloorLayout.containsInterior,
+                current: current,
+                proposed: proposed
+            )
+            setClearNewsOfficeDoorOpen(
+                officeDoorShouldOpen,
+                swingDirection: officeDoorSwingDirection,
+                wallOrientation: .north
+            )
+        case .clearNewsOffice:
+            isFrontDoorOpen = false
+            spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
+            setClearNewsDoorOpen(false, swingDirection: .outward)
+            let officeDoorShouldOpen = shouldOpenDoor(
+                openingRect: GameConstants.clearNewsOfficeLayout.frontDoorRect,
+                current: current,
+                proposed: proposed
+            )
+            let officeDoorSwingDirection = swingDirection(
+                openingRect: GameConstants.clearNewsOfficeLayout.frontDoorRect,
+                containsInterior: GameConstants.clearNewsOfficeLayout.containsInterior,
+                current: current,
+                proposed: proposed
+            )
+            setClearNewsOfficeDoorOpen(
+                officeDoorShouldOpen,
+                swingDirection: officeDoorSwingDirection,
+                wallOrientation: .south
+            )
         case .traffic1, .traffic2:
             isFrontDoorOpen = false
             spawnHouseNode?.setFrontDoorOpen(false, swingDirection: .outward)
             setClearNewsDoorOpen(false, swingDirection: .outward)
+            setClearNewsOfficeDoorOpen(false, swingDirection: .outward, wallOrientation: clearNewsOfficeDoorWallOrientation)
         }
     }
 
@@ -2016,6 +2378,37 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         SCNTransaction.begin()
         SCNTransaction.animationDuration = 0.16
         clearNewsDoorPivot?.eulerAngles.y = isOpen ? openAngle : 0
+        SCNTransaction.commit()
+    }
+
+    private func setClearNewsOfficeDoorOpen(
+        _ isOpen: Bool,
+        swingDirection: HouseNode.DoorSwingDirection,
+        wallOrientation: DoorWallOrientation
+    ) {
+        guard
+            isClearNewsOfficeDoorOpen != isOpen
+                || clearNewsOfficeDoorSwingDirection != swingDirection
+                || clearNewsOfficeDoorWallOrientation != wallOrientation
+        else {
+            return
+        }
+
+        isClearNewsOfficeDoorOpen = isOpen
+        clearNewsOfficeDoorSwingDirection = swingDirection
+        clearNewsOfficeDoorWallOrientation = wallOrientation
+
+        let openAngle: Float
+        switch wallOrientation {
+        case .north:
+            openAngle = swingDirection == .inward ? .pi / 2.35 : -.pi / 2.35
+        case .south:
+            openAngle = swingDirection == .inward ? -.pi / 2.35 : .pi / 2.35
+        }
+
+        SCNTransaction.begin()
+        SCNTransaction.animationDuration = 0.16
+        clearNewsOfficeDoorPivot?.eulerAngles.y = isOpen ? openAngle : 0
         SCNTransaction.commit()
     }
 
@@ -2120,7 +2513,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             guard
                 !hasExitedClearNewsThirdFloorElevator,
                 isClearNewsElevatorDoorOpenState,
-                !clearNewsElevatorFullyExitedRect.contains(worldFocusPoint)
+                !clearNewsElevatorExitClearanceRect.contains(worldFocusPoint)
             else {
                 return
             }
@@ -2128,7 +2521,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             hasExitedClearNewsThirdFloorElevator = true
             setClearNewsElevatorDoorOpen(false)
             refreshRoomBounds()
-        case .homestead, .traffic1, .traffic2:
+        case .homestead, .traffic1, .traffic2, .clearNewsOffice:
             return
         }
     }
@@ -2217,7 +2610,31 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             playerNode.setMovementState(.idle)
             onEastRoadExitReached?()
         case .clearNewsThirdFloor:
-            return
+            guard
+                isClearNewsOfficeDoorOpen,
+                clearNewsThirdFloorOfficeTransitionRect.contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            completeTransition(
+                to: .clearNewsOffice,
+                destinationPoint: GameConstants.clearNewsOfficeSpawnPoint,
+                heading: CGVector(dx: 0, dy: 1)
+            )
+        case .clearNewsOffice:
+            guard
+                isClearNewsOfficeDoorOpen,
+                clearNewsOfficeExitTransitionRect.contains(worldFocusPoint)
+            else {
+                return
+            }
+
+            completeTransition(
+                to: .clearNewsThirdFloor,
+                destinationPoint: GameConstants.clearNewsThirdFloorOfficeExitPoint,
+                heading: CGVector(dx: 0, dy: -1)
+            )
         }
     }
 
@@ -2338,6 +2755,48 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         material(
             diffuse: UIColor(red: 0.12, green: 0.18, blue: 0.11, alpha: 1.0),
             roughness: 0.7
+        )
+    }
+
+    private func clearNewsOfficeDoorMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.78, green: 0.67, blue: 0.43, alpha: 1.0),
+            roughness: 0.56
+        )
+    }
+
+    private func clearNewsOfficeDeskMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.46, green: 0.32, blue: 0.2, alpha: 1.0),
+            roughness: 0.74
+        )
+    }
+
+    private func clearNewsOfficeChairMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.16, green: 0.18, blue: 0.2, alpha: 1.0),
+            roughness: 0.54
+        )
+    }
+
+    private func clearNewsPrinterMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.86, green: 0.87, blue: 0.84, alpha: 1.0),
+            roughness: 0.42
+        )
+    }
+
+    private func clearNewsPrinterTopMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.26, green: 0.29, blue: 0.31, alpha: 1.0),
+            roughness: 0.36
+        )
+    }
+
+    private func clearNewsPrinterPanelMaterial() -> SCNMaterial {
+        material(
+            diffuse: UIColor(red: 0.12, green: 0.4, blue: 0.5, alpha: 1.0),
+            roughness: 0.24
         )
     }
 
@@ -2565,18 +3024,19 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
 
     private func clearNewsOfficePlaqueTexture() -> UIImage {
-        let size = CGSize(width: 420, height: 118)
+        let size = CGSize(width: 760, height: 220)
         let format = UIGraphicsImageRendererFormat()
         format.opaque = false
         format.scale = 1
 
-        let backgroundColor = UIColor(red: 0.12, green: 0.18, blue: 0.11, alpha: 1.0)
-        let borderColor = UIColor(red: 0.83, green: 0.79, blue: 0.62, alpha: 1.0)
-        let textColor = UIColor(red: 0.95, green: 0.94, blue: 0.88, alpha: 1.0)
+        let backgroundColor = UIColor(red: 0.08, green: 0.1, blue: 0.08, alpha: 1.0)
+        let borderColor = UIColor(red: 0.93, green: 0.82, blue: 0.52, alpha: 1.0)
+        let textColor = UIColor(red: 1.0, green: 0.98, blue: 0.9, alpha: 1.0)
+        let shadowColor = UIColor(red: 0.03, green: 0.04, blue: 0.03, alpha: 0.55)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
 
-        let font = UIFont.systemFont(ofSize: 44, weight: .bold)
+        let font = UIFont.systemFont(ofSize: 110, weight: .black)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor,
@@ -2585,25 +3045,27 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
         return UIGraphicsImageRenderer(size: size, format: format).image { rendererContext in
             let context = rendererContext.cgContext
-            let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 6)
-            let path = UIBezierPath(roundedRect: bounds, cornerRadius: 14)
+            let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 8, dy: 10)
+            let path = UIBezierPath(roundedRect: bounds, cornerRadius: 22)
 
             context.setFillColor(backgroundColor.cgColor)
             context.addPath(path.cgPath)
             context.fillPath()
 
             context.setStrokeColor(borderColor.cgColor)
-            context.setLineWidth(6)
+            context.setLineWidth(10)
             context.addPath(path.cgPath)
             context.strokePath()
 
+            context.setShadow(offset: CGSize(width: 0, height: 8), blur: 10, color: shadowColor.cgColor)
+
             let textBounds = CGRect(
-                x: 20,
-                y: 28,
-                width: size.width - 40,
-                height: size.height - 56
+                x: 32,
+                y: 42,
+                width: size.width - 64,
+                height: size.height - 84
             )
-            NSString(string: "Mr. Johnson").draw(in: textBounds, withAttributes: attributes)
+            NSString(string: "Johnson").draw(in: textBounds, withAttributes: attributes)
         }
     }
 

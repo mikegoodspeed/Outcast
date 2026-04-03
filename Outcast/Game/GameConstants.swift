@@ -333,13 +333,67 @@ enum GameConstants {
         y: clearNewsCounterRect.maxY + clearNewsClerkRadius + 0.18
     )
     static let clearNewsThirdFloorOfficeDoorWidth: CGFloat = 2.3
+    static let clearNewsOfficeLayout = ShellBuildingLayout(
+        outerRect: CGRect(
+            x: -5.4,
+            y: -2.4,
+            width: 10.8,
+            height: 8.8
+        ),
+        wallThickness: 0.42,
+        frontDoorWidth: clearNewsThirdFloorOfficeDoorWidth
+    )
     static let clearNewsThirdFloorOfficeDoorPoint: CGPoint = {
-        let interiorRect = clearNewsThirdFloorLayout.interiorRect
         return CGPoint(
-            x: interiorRect.minX + 2.95,
-            y: clearNewsThirdFloorLayout.outerRect.maxY - 0.04
+            x: clearNewsThirdFloorLayout.interiorRect.minX + (clearNewsThirdFloorOfficeDoorWidth / 2) + 0.9,
+            y: clearNewsThirdFloorLayout.outerRect.maxY - (clearNewsThirdFloorLayout.wallThickness / 2)
         )
     }()
+    static let clearNewsThirdFloorOfficeDoorRect: CGRect = {
+        return CGRect(
+            x: clearNewsThirdFloorOfficeDoorPoint.x - (clearNewsThirdFloorOfficeDoorWidth / 2),
+            y: clearNewsThirdFloorOfficeDoorPoint.y - (clearNewsThirdFloorLayout.wallThickness / 2),
+            width: clearNewsThirdFloorOfficeDoorWidth,
+            height: clearNewsThirdFloorLayout.wallThickness
+        )
+    }()
+    static let clearNewsOfficeSpawnPoint = CGPoint(
+        x: clearNewsOfficeLayout.center.x,
+        y: clearNewsOfficeLayout.interiorRect.minY + 1.28
+    )
+    static let clearNewsThirdFloorOfficeExitPoint = CGPoint(
+        x: clearNewsThirdFloorOfficeDoorRect.midX,
+        y: clearNewsThirdFloorLayout.interiorRect.maxY - 1.15
+    )
+    static let clearNewsThirdFloorPrinterPoint: CGPoint = {
+        let interiorRect = clearNewsThirdFloorLayout.interiorRect
+        return CGPoint(
+            x: interiorRect.minX + 1.55,
+            y: interiorRect.minY + 1.3
+        )
+    }()
+    static let clearNewsThirdFloorPrinterRect = CGRect(
+        x: clearNewsThirdFloorPrinterPoint.x - 0.56,
+        y: clearNewsThirdFloorPrinterPoint.y - 0.42,
+        width: 1.12,
+        height: 0.84
+    )
+    static let clearNewsOfficeDeskRect = CGRect(
+        x: clearNewsOfficeLayout.center.x - 1.7,
+        y: clearNewsOfficeLayout.interiorRect.maxY - 1.85,
+        width: 3.4,
+        height: 1.18
+    )
+    static let clearNewsOfficeChairPoint = CGPoint(
+        x: clearNewsOfficeDeskRect.midX,
+        y: clearNewsOfficeDeskRect.minY - 0.86
+    )
+    static let clearNewsOfficeBookshelfRect = CGRect(
+        x: clearNewsOfficeLayout.interiorRect.minX + 0.72,
+        y: clearNewsOfficeLayout.interiorRect.maxY - 2.5,
+        width: 0.72,
+        height: 2.0
+    )
     static let houseWidth: CGFloat = 6.8
     static let houseDepth: CGFloat = 5.6
     static let houseWallHeight: CGFloat = 3.9
