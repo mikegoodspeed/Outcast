@@ -77,6 +77,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var onWestRoadExitReached: (() -> Void)?
     var onEastRoadExitReached: (() -> Void)?
     var onClearNewsElevatorSealed: (() -> Void)?
+    var onClearNewsOfficeEntered: (() -> Void)?
     let scene = SCNScene()
     var isPlayerNearBedForInteraction: Bool {
         guard currentArea == .homestead else {
@@ -175,6 +176,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var clearNewsOfficeDoorPivot: SCNNode?
     private var clearNewsElevatorRoofNode: SCNNode?
     private var clearNewsClerkNode: SCNNode?
+    private var clearNewsOfficeLampLightNode: SCNNode?
     private var clearNewsElevatorLeftDoorNode: SCNNode?
     private var clearNewsElevatorRightDoorNode: SCNNode?
     private var hasExitedClearNewsThirdFloorElevator = false
@@ -751,6 +753,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         playerNode.isHidden = parkedCarState?.isOccupied == true
 
         configureWorld()
+
+        if area == .clearNewsOffice {
+            onClearNewsOfficeEntered?()
+        }
     }
 
     private func configureWorld() {
@@ -766,6 +772,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         clearNewsOfficeDoorPivot = nil
         clearNewsElevatorRoofNode = nil
         clearNewsClerkNode = nil
+        clearNewsOfficeLampLightNode = nil
         clearNewsElevatorLeftDoorNode = nil
         clearNewsElevatorRightDoorNode = nil
         trafficCars.removeAll()
@@ -1323,6 +1330,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         lampLight.light?.attenuationEndDistance = 8.0
         lampLight.position = SCNVector3(0, 2.1, 0)
         lamp.addChildNode(lampLight)
+        clearNewsOfficeLampLightNode = lampLight
 
         building.addChildNode(lamp)
 
@@ -2164,6 +2172,9 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             progress: fadeProgress
         )
         fillLightNode.light?.intensity = 920 * (1 - fadeProgress)
+
+        let lampProgress = fadeProgress
+        clearNewsOfficeLampLightNode?.light?.intensity = 110 + (610 * lampProgress)
 
         scene.background.contents = blendedColor(
             from: UIColor(red: 0.63, green: 0.84, blue: 1.0, alpha: 1.0),

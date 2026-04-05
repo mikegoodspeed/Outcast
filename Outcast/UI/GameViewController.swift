@@ -10,6 +10,9 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     private let robertDialogueView = UIView()
     private let robertDialogueTitleLabel = UILabel()
     private let robertDialogueBodyLabel = UILabel()
+    private let dialogueChoiceStackView = UIStackView()
+    private let dialoguePrimaryChoiceButton = UIButton(type: .system)
+    private let dialogueSecondaryChoiceButton = UIButton(type: .system)
     private let robertNameEntryView = UIView()
     private let robertNameEntryLabel = UILabel()
     private let robertNameTextField = UITextField()
@@ -36,6 +39,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     private var isBedPromptVisible = false
     private var areControlsLocked = false
     private var robertConversationState: RobertConversationState = .hidden
+    private var johnsonConversationState: JohnsonConversationState = .hidden
     private var elevatorPanelState: ElevatorPanelState = .hidden
 
     private var isRobertDialogueVisible: Bool {
@@ -47,6 +51,10 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         }
     }
 
+    private var isJohnsonDialogueVisible: Bool {
+        johnsonConversationState != .hidden
+    }
+
     private var isRobertNameEntryVisible: Bool {
         if case .enteringName = robertConversationState {
             return true
@@ -54,8 +62,12 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         return false
     }
 
-    private var isRobertConversationModal: Bool {
-        robertConversationState != .hidden
+    private var isDialogueVisible: Bool {
+        isRobertDialogueVisible || isJohnsonDialogueVisible
+    }
+
+    private var isConversationModal: Bool {
+        robertConversationState != .hidden || johnsonConversationState != .hidden
     }
 
     private var isElevatorSequenceModal: Bool {
@@ -249,11 +261,34 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         robertDialogueBodyLabel.numberOfLines = 0
         robertDialogueBodyLabel.accessibilityIdentifier = "robertDialogueBody"
 
-        let contentStack = UIStackView(arrangedSubviews: [robertDialogueTitleLabel, robertDialogueBodyLabel])
+        configureDialogueChoiceButton(
+            dialoguePrimaryChoiceButton,
+            accessibilityIdentifier: "dialoguePrimaryChoiceButton",
+            action: #selector(handleDialoguePrimaryChoiceButtonTap)
+        )
+        configureDialogueChoiceButton(
+            dialogueSecondaryChoiceButton,
+            accessibilityIdentifier: "dialogueSecondaryChoiceButton",
+            action: #selector(handleDialogueSecondaryChoiceButtonTap)
+        )
+
+        dialogueChoiceStackView.translatesAutoresizingMaskIntoConstraints = false
+        dialogueChoiceStackView.axis = .vertical
+        dialogueChoiceStackView.alignment = .fill
+        dialogueChoiceStackView.spacing = 10
+        dialogueChoiceStackView.isHidden = true
+        dialogueChoiceStackView.addArrangedSubview(dialoguePrimaryChoiceButton)
+        dialogueChoiceStackView.addArrangedSubview(dialogueSecondaryChoiceButton)
+
+        let contentStack = UIStackView(arrangedSubviews: [
+            robertDialogueTitleLabel,
+            robertDialogueBodyLabel,
+            dialogueChoiceStackView
+        ])
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.alignment = .fill
-        contentStack.spacing = 8
+        contentStack.spacing = 12
 
         view.addSubview(robertDialogueView)
         robertDialogueView.addSubview(contentStack)
@@ -283,7 +318,9 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
             contentStack.leadingAnchor.constraint(equalTo: robertDialogueView.leadingAnchor, constant: 18),
             contentStack.trailingAnchor.constraint(equalTo: robertDialogueView.trailingAnchor, constant: -18),
             contentStack.topAnchor.constraint(equalTo: robertDialogueView.topAnchor, constant: 16),
-            contentStack.bottomAnchor.constraint(equalTo: robertDialogueView.bottomAnchor, constant: -16)
+            contentStack.bottomAnchor.constraint(equalTo: robertDialogueView.bottomAnchor, constant: -16),
+            dialoguePrimaryChoiceButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
+            dialogueSecondaryChoiceButton.heightAnchor.constraint(greaterThanOrEqualToConstant: 46)
         ])
     }
 
@@ -540,7 +577,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
                 !self.isSpawnPromptVisible,
                 !self.isBedPromptVisible,
                 !self.areControlsLocked,
-                !self.isRobertConversationModal,
+                !self.isConversationModal,
                 !self.isElevatorSequenceModal
             else {
                 return .zero
@@ -585,6 +622,11 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
                 self?.beginClearNewsElevatorArrivalSequence()
             }
         }
+        gameScene.onClearNewsOfficeEntered = { [weak self] in
+            DispatchQueue.main.async {
+                self?.startJohnsonConversationIfNeeded()
+            }
+        }
     }
 
     @objc
@@ -595,6 +637,16 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     @objc
     private func handleSecondaryActionButtonTap() {
         handleInteractionAction(.secondaryAction)
+    }
+
+    @objc
+    private func handleDialoguePrimaryChoiceButtonTap() {
+        advanceJohnsonConversation(with: 0)
+    }
+
+    @objc
+    private func handleDialogueSecondaryChoiceButtonTap() {
+        advanceJohnsonConversation(with: 1)
     }
 
     private func handlePresses(_ presses: Set<UIPress>, isPressed: Bool) -> Bool {
@@ -632,7 +684,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
                 continue
             }
 
-            if isRobertDialogueVisible {
+            if isDialogueVisible {
                 handled = true
                 continue
             }
@@ -655,6 +707,10 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
 
     private func handleInteractionAction(_ action: InteractionKeyAction) {
         guard !areControlsLocked, !isElevatorSequenceModal else {
+            return
+        }
+
+        if isJohnsonDialogueVisible {
             return
         }
 
@@ -724,7 +780,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         joystickView.resetControl()
         robertConversationState = .intro
         refreshControlState()
-        refreshRobertConversationPresentation(animated: true)
+        refreshConversationPresentation(animated: true)
     }
 
     private func advanceRobertConversation() {
@@ -745,7 +801,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         inputController.reset()
         joystickView.resetControl()
         refreshControlState()
-        refreshRobertConversationPresentation(animated: true)
+        refreshConversationPresentation(animated: true)
 
         if robertConversationState == .hidden {
             becomeFirstResponder()
@@ -765,30 +821,71 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
 
         robertConversationState = .final(trimmedName)
         refreshControlState()
-        refreshRobertConversationPresentation(animated: true)
+        refreshConversationPresentation(animated: true)
         becomeFirstResponder()
     }
 
-    private func refreshRobertConversationPresentation(animated: Bool) {
-        let dialogueText = robertDialogueText(for: robertConversationState)
-        let shouldShowDialogue = dialogueText != nil
+    private func startJohnsonConversationIfNeeded() {
+        guard
+            gameScene.currentAreaIdentifier == "clearNewsOffice",
+            johnsonConversationState == .hidden
+        else {
+            return
+        }
+
+        inputController.reset()
+        joystickView.resetControl()
+        johnsonConversationState = .greeting
+        refreshControlState()
+        refreshConversationPresentation(animated: true)
+        becomeFirstResponder()
+    }
+
+    private func advanceJohnsonConversation(with choiceIndex: Int) {
+        guard let nextState = johnsonConversationState.nextState(for: choiceIndex) else {
+            return
+        }
+
+        inputController.reset()
+        joystickView.resetControl()
+        johnsonConversationState = nextState
+        if johnsonConversationState == .hidden {
+            refreshControlState()
+            refreshConversationPresentation(animated: true)
+            becomeFirstResponder()
+            return
+        }
+
+        refreshControlState()
+        refreshConversationPresentation(animated: true)
+    }
+
+    private func refreshConversationPresentation(animated: Bool) {
+        let dialogueContent = activeDialogueContent()
+        let shouldShowDialogue = dialogueContent != nil
         let shouldShowNameEntry = isRobertNameEntryVisible
 
-        if let dialogueText {
-            if robertDialogueBodyLabel.text != dialogueText {
+        applyDialogueChoices(dialogueContent?.choices ?? [])
+
+        if let dialogueContent {
+            if robertDialogueTitleLabel.text != dialogueContent.title {
+                robertDialogueTitleLabel.text = dialogueContent.title
+            }
+            if robertDialogueBodyLabel.text != dialogueContent.body {
                 if animated && !robertDialogueView.isHidden {
                     UIView.transition(
                         with: robertDialogueBodyLabel,
                         duration: 0.18,
                         options: [.transitionCrossDissolve, .allowUserInteraction],
                         animations: {
-                            self.robertDialogueBodyLabel.text = dialogueText
+                            self.robertDialogueBodyLabel.text = dialogueContent.body
                         }
                     )
                 } else {
-                    robertDialogueBodyLabel.text = dialogueText
+                    robertDialogueBodyLabel.text = dialogueContent.body
                 }
             }
+
         }
 
         setPromptView(robertDialogueView, visible: shouldShowDialogue, animated: animated)
@@ -814,6 +911,121 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         case .final(let name):
             return "Nice to meet you, \(name)! I'm assuming you're here for a job interview, so go on ahead to the third floor. Mr. Johnson works up there."
         }
+    }
+
+    private func activeDialogueContent() -> DialogueContent? {
+        if isJohnsonDialogueVisible {
+            return johnsonDialogueContent(for: johnsonConversationState)
+        }
+
+        guard let body = robertDialogueText(for: robertConversationState) else {
+            return nil
+        }
+
+        return DialogueContent(
+            title: "Robert",
+            body: body,
+            choices: []
+        )
+    }
+
+    private func johnsonDialogueContent(for state: JohnsonConversationState) -> DialogueContent? {
+        switch state {
+        case .hidden:
+            return nil
+        case .greeting:
+            return DialogueContent(
+                title: "Johnson",
+                body: "Ah, yes, \(gameScene.currentPlayerName ?? "kid"), I've heard a lot about you...",
+                choices: [
+                    "I just got here...?",
+                    "Sir, yes, SIR!"
+                ]
+            )
+        case .firstPause:
+            return DialogueContent(
+                title: "Johnson",
+                body: "...",
+                choices: ["..."]
+            )
+        case .throatClearingBeat:
+            return DialogueContent(
+                title: "Johnson",
+                body: "Ok...",
+                choices: [
+                    "*Clears Throat*",
+                    "*Chuckles Sheepishly*"
+                ]
+            )
+        case .newspaperExperience:
+            return DialogueContent(
+                title: "Johnson",
+                body: "Do you have any experience in a newspaper?",
+                choices: ["No."]
+            )
+        case .firstJob:
+            return DialogueContent(
+                title: "Johnson",
+                body: "Is this your first job?",
+                choices: ["Yes."]
+            )
+        case .newspaperDefinition:
+            return DialogueContent(
+                title: "Johnson",
+                body: "Do you know what a newspaper is?",
+                choices: [
+                    "It's a paper that people pay to read?",
+                    "¥es, I do! ...nevermind."
+                ]
+            )
+        case .secondPause:
+            return DialogueContent(
+                title: "Johnson",
+                body: "...",
+                choices: ["..."]
+            )
+        case .thirdPause:
+            return DialogueContent(
+                title: "Johnson",
+                body: "...",
+                choices: ["..."]
+            )
+        case .perfectForTheJob:
+            return DialogueContent(
+                title: "Johnson",
+                body: "You're perfect for the job!",
+                choices: [
+                    "I knew it!",
+                    "(under your breath) how do you find valuable candidates?"
+                ]
+            )
+        case .excuseMe:
+            return DialogueContent(
+                title: "Johnson",
+                body: "Excuse me?",
+                choices: ["Sorry, Mr. Johnson."]
+            )
+        }
+    }
+
+    private func applyDialogueChoices(_ choices: [String]) {
+        let buttonConfigurations = [
+            (button: dialoguePrimaryChoiceButton, title: choices.first),
+            (button: dialogueSecondaryChoiceButton, title: choices.count > 1 ? choices[1] : nil)
+        ]
+
+        for entry in buttonConfigurations {
+            guard let title = entry.title else {
+                entry.button.isHidden = true
+                entry.button.setTitle(nil, for: .normal)
+                continue
+            }
+
+            entry.button.isHidden = false
+            entry.button.setTitle(title, for: .normal)
+        }
+
+        dialogueChoiceStackView.isHidden = choices.isEmpty
     }
 
     private func refreshRobertNameDoneButtonState() {
@@ -996,6 +1208,27 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         button.addTarget(self, action: action, for: .touchUpInside)
     }
 
+    private func configureDialogueChoiceButton(
+        _ button: UIButton,
+        accessibilityIdentifier: String,
+        action: Selector
+    ) {
+        configureSpawnButton(
+            button,
+            title: "",
+            accessibilityIdentifier: accessibilityIdentifier,
+            action: action
+        )
+        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
+        button.titleLabel?.numberOfLines = 0
+        button.titleLabel?.textAlignment = .center
+        if #available(iOS 15.0, *) {
+            var configuration = button.configuration ?? .plain()
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14)
+            button.configuration = configuration
+        }
+    }
+
     private func refreshElevatorFloorButtonStates() {
         let buttons = [
             (button: elevatorFloorBLButton, isEnabled: false),
@@ -1134,23 +1367,25 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         joystickView.isUserInteractionEnabled = !isSpawnPromptVisible
             && !isBedPromptVisible
             && !areControlsLocked
-            && !isRobertConversationModal
+            && !isConversationModal
             && !isElevatorSequenceModal
-        joystickView.alpha = (isSpawnPromptVisible || isRobertConversationModal || isElevatorSequenceModal) ? 0.35 : 1
+        joystickView.alpha = (isSpawnPromptVisible || isConversationModal || isElevatorSequenceModal) ? 0.35 : 1
         let areActionButtonsHidden = areControlsLocked
             || isSpawnPromptVisible
             || isRobertNameEntryVisible
             || isElevatorSequenceModal
-        let shouldFloatBAboveDialogue = isRobertDialogueVisible && !areActionButtonsHidden
+        let shouldFloatBAboveDialogue = isDialogueVisible && !areActionButtonsHidden
         actionButtonBStackConstraint?.isActive = !shouldFloatBAboveDialogue
         actionButtonBDialogueConstraint?.isActive = shouldFloatBAboveDialogue
 
-        actionButtonA.isHidden = areActionButtonsHidden || isRobertDialogueVisible
-        actionButtonB.isHidden = areActionButtonsHidden
-        if isRobertDialogueVisible {
+        actionButtonA.isHidden = areActionButtonsHidden || isDialogueVisible
+        actionButtonB.isHidden = areActionButtonsHidden || isJohnsonDialogueVisible
+        if isDialogueVisible {
             actionButtonB.alpha = 1
             view.bringSubviewToFront(robertDialogueView)
-            view.bringSubviewToFront(actionButtonB)
+            if !actionButtonB.isHidden {
+                view.bringSubviewToFront(actionButtonB)
+            }
         } else {
             let actionButtonsAlpha: CGFloat = isBedPromptVisible ? 0.45 : 1
             actionButtonA.alpha = actionButtonsAlpha
@@ -1165,9 +1400,10 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
 
     private func lockControlsForTransition() {
         setBedPromptVisible(false)
-        if isRobertConversationModal {
+        if isConversationModal {
             robertConversationState = .hidden
-            refreshRobertConversationPresentation(animated: false)
+            johnsonConversationState = .hidden
+            refreshConversationPresentation(animated: false)
         }
         resetElevatorSequencePresentation()
         areControlsLocked = true
@@ -1288,12 +1524,13 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         isSpawnPromptVisible = false
         areControlsLocked = false
         robertConversationState = .hidden
+        johnsonConversationState = .hidden
         resetElevatorSequencePresentation()
         inputController.reset()
         joystickView.resetControl()
         gameScene.spawn(at: location)
         refreshControlState()
-        refreshRobertConversationPresentation(animated: false)
+        refreshConversationPresentation(animated: false)
         becomeFirstResponder()
     }
 
@@ -1354,6 +1591,63 @@ private enum RobertConversationState: Equatable {
     case followUp
     case enteringName
     case final(String)
+}
+
+private struct DialogueContent {
+    let title: String
+    let body: String
+    let choices: [String]
+}
+
+private enum JohnsonConversationState: Equatable {
+    case hidden
+    case greeting
+    case firstPause
+    case throatClearingBeat
+    case newspaperExperience
+    case firstJob
+    case newspaperDefinition
+    case secondPause
+    case thirdPause
+    case perfectForTheJob
+    case excuseMe
+
+    func nextState(for choiceIndex: Int) -> JohnsonConversationState? {
+        switch self {
+        case .hidden:
+            return nil
+        case .greeting:
+            guard (0...1).contains(choiceIndex) else { return nil }
+            return .firstPause
+        case .firstPause:
+            guard choiceIndex == 0 else { return nil }
+            return .throatClearingBeat
+        case .throatClearingBeat:
+            guard (0...1).contains(choiceIndex) else { return nil }
+            return .newspaperExperience
+        case .newspaperExperience:
+            guard choiceIndex == 0 else { return nil }
+            return .firstJob
+        case .firstJob:
+            guard choiceIndex == 0 else { return nil }
+            return .newspaperDefinition
+        case .newspaperDefinition:
+            guard (0...1).contains(choiceIndex) else { return nil }
+            return .secondPause
+        case .secondPause:
+            guard choiceIndex == 0 else { return nil }
+            return .thirdPause
+        case .thirdPause:
+            guard choiceIndex == 0 else { return nil }
+            return .perfectForTheJob
+        case .perfectForTheJob:
+            guard (0...1).contains(choiceIndex) else { return nil }
+            return .excuseMe
+        case .excuseMe:
+            guard choiceIndex == 0 else { return nil }
+            return .hidden
+        }
+    }
 }
 
 private enum ElevatorPanelState: Equatable {

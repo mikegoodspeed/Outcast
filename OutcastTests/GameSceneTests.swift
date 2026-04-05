@@ -686,6 +686,145 @@ final class GameSceneTests: XCTestCase {
         XCTAssertTrue(GameConstants.clearNewsOfficeLayout.containsInterior(gameScene.currentPlayerPosition))
     }
 
+    func testEnteringClearNewsThirdFloorOfficeInvokesOfficeEntryCallback() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+        var callbackCount = 0
+
+        gameScene.onClearNewsOfficeEntered = {
+            callbackCount += 1
+        }
+
+        gameScene.spawn(at: .clearNews)
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+
+        let thresholdPoint = CGPoint(
+            x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
+            y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 0.06
+        )
+        gameScene.setPlayerPosition(
+            thresholdPoint,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+
+        advance(gameScene, renderer: renderer, frames: 0...5, input: CGVector(dx: 0, dy: 1))
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsOffice")
+        XCTAssertEqual(callbackCount, 1)
+    }
+
+    func testJohnsonConversationStartsOnOfficeEntryAndCompletesScriptedPath() throws {
+        let controller = GameViewController()
+        controller.loadViewIfNeeded()
+
+        let spawnButton = try button(
+            withAccessibilityIdentifier: "spawnClearNewsButton",
+            in: controller.view
+        )
+        spawnButton.sendActions(for: .touchUpInside)
+
+        let gameView = try XCTUnwrap(
+            view(withAccessibilityIdentifier: "gameView", in: controller.view) as? SCNView
+        )
+        let gameScene = try XCTUnwrap(gameView.delegate as? GameScene)
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+        gameScene.setPlayerPosition(
+            CGPoint(
+                x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
+                y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 0.06
+            ),
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 0...5, input: CGVector(dx: 0, dy: 1))
+        pumpMainQueue()
+
+        let titleLabel = try label(
+            withAccessibilityIdentifier: "robertDialogueTitle",
+            in: controller.view
+        )
+        let bodyLabel = try label(
+            withAccessibilityIdentifier: "robertDialogueBody",
+            in: controller.view
+        )
+        let primaryChoice = try button(
+            withAccessibilityIdentifier: "dialoguePrimaryChoiceButton",
+            in: controller.view
+        )
+        let secondaryChoice = try button(
+            withAccessibilityIdentifier: "dialogueSecondaryChoiceButton",
+            in: controller.view
+        )
+        let dialogueView = try XCTUnwrap(
+            view(withAccessibilityIdentifier: "robertDialogue", in: controller.view)
+        )
+
+        XCTAssertFalse(dialogueView.isHidden)
+        XCTAssertEqual(titleLabel.text, "Johnson")
+        XCTAssertEqual(bodyLabel.text, "Ah, yes, Alex, I've heard a lot about you...")
+        XCTAssertEqual(primaryChoice.currentTitle, "I just got here...?")
+        XCTAssertEqual(secondaryChoice.currentTitle, "Sir, yes, SIR!")
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "...")
+        XCTAssertEqual(primaryChoice.currentTitle, "...")
+        XCTAssertTrue(secondaryChoice.isHidden)
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "Ok...")
+        XCTAssertEqual(primaryChoice.currentTitle, "*Clears Throat*")
+        XCTAssertEqual(secondaryChoice.currentTitle, "*Chuckles Sheepishly*")
+
+        secondaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "Do you have any experience in a newspaper?")
+        XCTAssertEqual(primaryChoice.currentTitle, "No.")
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "Is this your first job?")
+        XCTAssertEqual(primaryChoice.currentTitle, "Yes.")
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "Do you know what a newspaper is?")
+        XCTAssertEqual(primaryChoice.currentTitle, "It's a paper that people pay to read?")
+        XCTAssertEqual(secondaryChoice.currentTitle, "¥es, I do! ...nevermind.")
+
+        secondaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "...")
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "...")
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "You're perfect for the job!")
+        XCTAssertEqual(primaryChoice.currentTitle, "I knew it!")
+        XCTAssertEqual(
+            secondaryChoice.currentTitle,
+            "(under your breath) how do you find valuable candidates?"
+        )
+
+        secondaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertEqual(bodyLabel.text, "Excuse me?")
+        XCTAssertEqual(primaryChoice.currentTitle, "Sorry, Mr. Johnson.")
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        XCTAssertTrue(dialogueView.isHidden)
+    }
+
     func testClearNewsThirdFloorOfficeDoorSwingsBeforeOfficeTransition() throws {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
         let renderer = SCNRenderer(device: nil, options: nil)
@@ -1308,6 +1447,42 @@ final class GameSceneTests: XCTestCase {
         for frame in frames {
             gameScene.renderer(renderer, updateAtTime: Double(frame) / 30.0)
         }
+    }
+
+    private func pumpMainQueue() {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+    }
+
+    private func button(
+        withAccessibilityIdentifier accessibilityIdentifier: String,
+        in rootView: UIView
+    ) throws -> UIButton {
+        try XCTUnwrap(
+            view(withAccessibilityIdentifier: accessibilityIdentifier, in: rootView) as? UIButton
+        )
+    }
+
+    private func label(
+        withAccessibilityIdentifier accessibilityIdentifier: String,
+        in rootView: UIView
+    ) throws -> UILabel {
+        try XCTUnwrap(
+            view(withAccessibilityIdentifier: accessibilityIdentifier, in: rootView) as? UILabel
+        )
+    }
+
+    private func view(withAccessibilityIdentifier accessibilityIdentifier: String, in rootView: UIView) -> UIView? {
+        if rootView.accessibilityIdentifier == accessibilityIdentifier {
+            return rootView
+        }
+
+        for subview in rootView.subviews {
+            if let match = view(withAccessibilityIdentifier: accessibilityIdentifier, in: subview) {
+                return match
+            }
+        }
+
+        return nil
     }
 
     private func assertColorsEqual(
