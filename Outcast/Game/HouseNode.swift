@@ -308,13 +308,17 @@ final class HouseNode: SCNNode {
     }
 
     private func addFrontDoor(elevation: CGFloat, material: SCNMaterial, knobMaterial: SCNMaterial) {
-        let doorHeight = wallHeight * 0.89
+        let framePostHeight = wallHeight * 0.88
+        let doorReveal = layout.exteriorWallThickness * 0.12
+        let doorHeight = framePostHeight - doorReveal
         let doorThickness = layout.exteriorWallThickness * 0.48
-        let doorWidth = layout.frontDoorOpeningRect.width * 1.04
+        let doorWidth = layout.frontDoorOpeningRect.width - (doorReveal * 2)
 
-        frontDoorPivot.position = hingePosition(
-            for: layout.frontDoorOpeningRect,
-            hingedAtMinimumSide: true,
+        frontDoorPivot.position = localPosition(
+            for: CGPoint(
+                x: layout.frontDoorOpeningRect.minX + doorReveal,
+                y: layout.frontDoorOpeningRect.midY
+            ),
             elevation: elevation
         )
         frontDoorPivot.name = "frontDoorPivot"

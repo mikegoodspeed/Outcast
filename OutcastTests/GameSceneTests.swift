@@ -195,6 +195,25 @@ final class GameSceneTests: XCTestCase {
         XCTAssertGreaterThan(frontDoorPivot.eulerAngles.y, 1.0)
     }
 
+    func testFrontDoorFitsWithinHomeDoorway() throws {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let house = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "house", recursively: true))
+        let frontDoor = try XCTUnwrap(gameScene.scene.rootNode.childNode(withName: "frontDoor", recursively: true))
+        let doorGeometry = try XCTUnwrap(frontDoor.geometry as? SCNBox)
+        let doorCenter = frontDoor.convertPosition(SCNVector3Zero, to: house)
+        let layout = GameConstants.spawnHouseLayout
+        let doorwayCenter = CGPoint(
+            x: layout.frontDoorOpeningRect.midX - layout.center.x,
+            y: -(layout.frontDoorOpeningRect.midY - layout.center.y)
+        )
+        let framePostHeight = GameConstants.houseWallHeight * 0.88
+
+        XCTAssertLessThan(doorGeometry.width, layout.frontDoorOpeningRect.width)
+        XCTAssertLessThan(doorGeometry.height, framePostHeight)
+        XCTAssertEqual(CGFloat(doorCenter.x), doorwayCenter.x, accuracy: 0.001)
+        XCTAssertEqual(CGFloat(doorCenter.z), doorwayCenter.y, accuracy: 0.001)
+    }
+
     func testFrontDoorSwingsOutsideWhenPlayerExitsHouse() throws {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
         let renderer = SCNRenderer(device: nil, options: nil)
