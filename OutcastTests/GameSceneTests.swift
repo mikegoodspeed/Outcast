@@ -783,6 +783,8 @@ final class GameSceneTests: XCTestCase {
             view(withAccessibilityIdentifier: "robertDialogue", in: controller.view)
         )
 
+        waitForVisible(dialogueView)
+
         XCTAssertFalse(dialogueView.isHidden)
         XCTAssertEqual(titleLabel.text, "Johnson")
         XCTAssertEqual(bodyLabel.text, "Ah, yes, Alex, I've heard a lot about you...")
@@ -842,6 +844,88 @@ final class GameSceneTests: XCTestCase {
         primaryChoice.sendActions(for: .touchUpInside)
         pumpMainQueue()
         XCTAssertTrue(dialogueView.isHidden)
+    }
+
+    func testJohnsonConversationDoesNotRestartWhenReenteringOffice() throws {
+        let controller = GameViewController()
+        controller.loadViewIfNeeded()
+
+        let spawnButton = try button(
+            withAccessibilityIdentifier: "spawnClearNewsButton",
+            in: controller.view
+        )
+        spawnButton.sendActions(for: .touchUpInside)
+
+        let gameView = try XCTUnwrap(
+            view(withAccessibilityIdentifier: "gameView", in: controller.view) as? SCNView
+        )
+        let gameScene = try XCTUnwrap(gameView.delegate as? GameScene)
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+        gameScene.setPlayerPosition(
+            CGPoint(
+                x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
+                y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 0.06
+            ),
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 0...5, input: CGVector(dx: 0, dy: 1))
+        pumpMainQueue()
+
+        try completeJohnsonConversation(in: controller.view)
+
+        let dialogueView = try XCTUnwrap(
+            view(withAccessibilityIdentifier: "robertDialogue", in: controller.view)
+        )
+        let titleLabel = try label(
+            withAccessibilityIdentifier: "robertDialogueTitle",
+            in: controller.view
+        )
+        let bodyLabel = try label(
+            withAccessibilityIdentifier: "robertDialogueBody",
+            in: controller.view
+        )
+        let primaryChoice = try button(
+            withAccessibilityIdentifier: "dialoguePrimaryChoiceButton",
+            in: controller.view
+        )
+        let secondaryChoice = try button(
+            withAccessibilityIdentifier: "dialogueSecondaryChoiceButton",
+            in: controller.view
+        )
+
+        XCTAssertTrue(dialogueView.isHidden)
+
+        let officeExitApproachPoint = CGPoint(
+            x: GameConstants.clearNewsOfficeLayout.frontDoorRect.midX,
+            y: GameConstants.clearNewsOfficeLayout.interiorRect.minY + 1.15
+        )
+        gameScene.setPlayerPosition(
+            officeExitApproachPoint,
+            heading: CGVector(dx: 0, dy: -1)
+        )
+        advance(gameScene, renderer: renderer, frames: 6...11, input: CGVector(dx: 0, dy: -1))
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsThirdFloor")
+
+        gameScene.setPlayerPosition(
+            CGPoint(
+                x: GameConstants.clearNewsThirdFloorOfficeDoorRect.midX,
+                y: GameConstants.clearNewsThirdFloorLayout.interiorRect.maxY - 0.06
+            ),
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 12...17, input: CGVector(dx: 0, dy: 1))
+        pumpMainQueue()
+
+        XCTAssertTrue(dialogueView.isHidden)
+        XCTAssertEqual(titleLabel.text, "Johnson")
+        XCTAssertEqual(bodyLabel.text, "Excuse me?")
+        XCTAssertNil(primaryChoice.currentTitle)
+        XCTAssertTrue(primaryChoice.isHidden)
+        XCTAssertTrue(secondaryChoice.isHidden)
     }
 
     func testClearNewsThirdFloorOfficeDoorSwingsBeforeOfficeTransition() throws {
@@ -1470,6 +1554,50 @@ final class GameSceneTests: XCTestCase {
 
     private func pumpMainQueue() {
         RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+    }
+
+    private func completeJohnsonConversation(in rootView: UIView) throws {
+        let primaryChoice = try button(
+            withAccessibilityIdentifier: "dialoguePrimaryChoiceButton",
+            in: rootView
+        )
+        let secondaryChoice = try button(
+            withAccessibilityIdentifier: "dialogueSecondaryChoiceButton",
+            in: rootView
+        )
+
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        secondaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        secondaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        secondaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+        primaryChoice.sendActions(for: .touchUpInside)
+        pumpMainQueue()
+    }
+
+    private func waitForVisible(
+        _ view: UIView,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        for _ in 0..<20 where view.isHidden {
+            pumpMainQueue()
+        }
+
+        XCTAssertFalse(view.isHidden, file: file, line: line)
     }
 
     private func button(

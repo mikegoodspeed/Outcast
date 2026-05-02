@@ -40,6 +40,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     private var areControlsLocked = false
     private var robertConversationState: RobertConversationState = .hidden
     private var johnsonConversationState: JohnsonConversationState = .hidden
+    private var hasCompletedJohnsonConversation = false
     private var elevatorPanelState: ElevatorPanelState = .hidden
 
     private var isRobertDialogueVisible: Bool {
@@ -828,7 +829,8 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     private func startJohnsonConversationIfNeeded() {
         guard
             gameScene.currentAreaIdentifier == "clearNewsOffice",
-            johnsonConversationState == .hidden
+            johnsonConversationState == .hidden,
+            !hasCompletedJohnsonConversation
         else {
             return
         }
@@ -850,6 +852,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         joystickView.resetControl()
         johnsonConversationState = nextState
         if johnsonConversationState == .hidden {
+            hasCompletedJohnsonConversation = true
             refreshControlState()
             refreshConversationPresentation(animated: true)
             becomeFirstResponder()
@@ -1525,6 +1528,7 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         areControlsLocked = false
         robertConversationState = .hidden
         johnsonConversationState = .hidden
+        hasCompletedJohnsonConversation = false
         resetElevatorSequencePresentation()
         inputController.reset()
         joystickView.resetControl()
