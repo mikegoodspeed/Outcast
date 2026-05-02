@@ -76,7 +76,10 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     }
 
     private var isElevatorControlPanelVisible: Bool {
-        elevatorPanelState == .panelVisible
+        if case .panelVisible = elevatorPanelState {
+            return true
+        }
+        return false
     }
 
     override func viewDidLoad() {
@@ -745,8 +748,16 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
                 return
             }
 
-            if gameScene.isPlayerNearClearNewsElevatorForInteraction {
+            if gameScene.isPlayerNearClearNewsReceptionForInteraction {
                 startRobertConversation()
+                return
+            }
+
+            if gameScene.isPlayerNearClearNewsElevatorForInteraction {
+                inputController.reset()
+                joystickView.resetControl()
+                _ = gameScene.beginClearNewsElevatorInteraction()
+                refreshControlState()
                 return
             }
 
@@ -1233,11 +1244,12 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func refreshElevatorFloorButtonStates() {
+        let enabledFloor = elevatorPanelState.enabledDestinationFloor
         let buttons = [
             (button: elevatorFloorBLButton, isEnabled: false),
-            (button: elevatorFloor1Button, isEnabled: false),
+            (button: elevatorFloor1Button, isEnabled: enabledFloor == .one),
             (button: elevatorFloor2Button, isEnabled: false),
-            (button: elevatorFloor3Button, isEnabled: elevatorPanelState == .panelVisible)
+            (button: elevatorFloor3Button, isEnabled: enabledFloor == .three)
         ]
 
         for entry in buttons {
@@ -1253,13 +1265,16 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
     }
 
     private func beginClearNewsElevatorArrivalSequence() {
-        guard elevatorPanelState == .hidden else {
+        guard
+            elevatorPanelState == .hidden,
+            let floor = ClearNewsElevatorFloor(gameScene.currentClearNewsElevatorFloorNumber)
+        else {
             return
         }
 
         inputController.reset()
         joystickView.resetControl()
-        elevatorPanelState = .panelVisible
+        elevatorPanelState = .panelVisible(currentFloor: floor)
         refreshElevatorFloorButtonStates()
         elevatorControlPanelView.isHidden = false
         elevatorControlPanelView.alpha = 1
@@ -1268,14 +1283,14 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
         becomeFirstResponder()
     }
 
-    private func presentClearNewsElevatorTravelFade() {
-        guard elevatorPanelState == .panelVisible else {
+    private func presentClearNewsElevatorTravelFade(to floor: ClearNewsElevatorFloor) {
+        guard case .panelVisible = elevatorPanelState else {
             return
         }
 
         inputController.reset()
         joystickView.resetControl()
-        elevatorPanelState = .traveling
+        elevatorPanelState = .traveling(destinationFloor: floor)
         refreshElevatorFloorButtonStates()
         refreshControlState()
         view.bringSubviewToFront(sleepFadeView)
@@ -1288,13 +1303,18 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
             completion: { _ in
                 self.elevatorControlPanelView.alpha = 0
                 self.elevatorControlPanelView.isHidden = true
-                self.finishClearNewsElevatorTravelTransition()
+                self.finishClearNewsElevatorTravelTransition(to: floor)
             }
         )
     }
 
-    private func finishClearNewsElevatorTravelTransition() {
-        gameScene.completeClearNewsElevatorThirdFloorTransition()
+    private func finishClearNewsElevatorTravelTransition(to floor: ClearNewsElevatorFloor) {
+        switch floor {
+        case .one:
+            gameScene.completeClearNewsElevatorLobbyTransition()
+        case .three:
+            gameScene.completeClearNewsElevatorThirdFloorTransition()
+        }
         gameView.prepare([gameScene.scene.rootNode]) { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self else {
@@ -1506,11 +1526,16 @@ final class GameViewController: UIViewController, UITextFieldDelegate {
 
     @objc
     private func handleElevatorFloorButtonTap(_ sender: UIButton) {
-        guard sender === elevatorFloor3Button else {
+        let destinationFloor: ClearNewsElevatorFloor
+        if sender === elevatorFloor1Button {
+            destinationFloor = .one
+        } else if sender === elevatorFloor3Button {
+            destinationFloor = .three
+        } else {
             return
         }
 
-        presentClearNewsElevatorTravelFade()
+        presentClearNewsElevatorTravelFade(to: destinationFloor)
     }
 
     @objc
@@ -1656,6 +1681,32 @@ private enum JohnsonConversationState: Equatable {
 
 private enum ElevatorPanelState: Equatable {
     case hidden
-    case panelVisible
-    case traveling
+    case panelVisible(currentFloor: ClearNewsElevatorFloor)
+    case traveling(destinationFloor: ClearNewsElevatorFloor)
+
+    var enabledDestinationFloor: ClearNewsElevatorFloor? {
+        guard case let .panelVisible(currentFloor) = self else {
+            return nil
+        }
+
+        switch currentFloor {
+        case .one:
+            return .three
+        case .three:
+            return .one
+        }
+    }
+}
+
+private enum ClearNewsElevatorFloor: Int {
+    case one = 1
+    case three = 3
+
+    init?(_ floorNumber: Int?) {
+        guard let floorNumber else {
+            return nil
+        }
+
+        self.init(rawValue: floorNumber)
+    }
 }

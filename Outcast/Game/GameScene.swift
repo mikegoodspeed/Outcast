@@ -106,12 +106,21 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     var isDrivingParkedCar: Bool {
         parkedCarState?.isOccupied == true
     }
-    var isPlayerNearClearNewsElevatorForInteraction: Bool {
+    var isPlayerNearClearNewsReceptionForInteraction: Bool {
         guard
             currentArea == .traffic3,
             !isDrivingParkedCar,
-            !hasMetClearNewsReceptionist,
-            !hasEnteredClearNewsElevator
+            !hasMetClearNewsReceptionist
+        else {
+            return false
+        }
+
+        return clearNewsElevatorInteractionRect.contains(worldFocusPoint)
+    }
+    var isPlayerNearClearNewsElevatorForInteraction: Bool {
+        guard
+            !isDrivingParkedCar,
+            currentArea == .traffic3 || currentArea == .clearNewsThirdFloor
         else {
             return false
         }
@@ -136,6 +145,16 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     }
     var currentPlayerPosition: CGPoint {
         worldFocusPoint
+    }
+    var currentClearNewsElevatorFloorNumber: Int? {
+        switch currentArea {
+        case .traffic3:
+            return 1
+        case .clearNewsThirdFloor:
+            return 3
+        case .homestead, .traffic1, .traffic2, .clearNewsOffice:
+            return nil
+        }
     }
     var currentCameraFieldOfView: CGFloat {
         cameraNode.camera?.fieldOfView ?? GameConstants.cameraFieldOfView
@@ -179,6 +198,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var clearNewsOfficeLampLightNode: SCNNode?
     private var clearNewsElevatorLeftDoorNode: SCNNode?
     private var clearNewsElevatorRightDoorNode: SCNNode?
+    private var hasExitedClearNewsLobbyElevator = true
     private var hasExitedClearNewsThirdFloorElevator = false
     private var isFrontDoorOpen = false
     private var clearNewsDoorSwingDirection: HouseNode.DoorSwingDirection = .outward
@@ -189,7 +209,6 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
     private var clearNewsOfficeDoorWallOrientation: DoorWallOrientation = .north
     private var isClearNewsElevatorDoorOpenState = false
     private var hasMetClearNewsReceptionist = false
-    private var hasEnteredClearNewsElevator = false
     private var storedPlayerName: String?
     private var currentArea: Area = .homestead
     private var areaTransitionPending = false
@@ -372,6 +391,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
                 heading: CGVector(dx: 0, dy: -1)
             )
         case .clearNews:
+            hasExitedClearNewsLobbyElevator = true
             completeTransition(
                 to: .traffic3,
                 destinationPoint: GameConstants.clearNewsSpawnPoint,
@@ -427,6 +447,10 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
             destinationArea = .traffic3
         case .homestead, .traffic3, .clearNewsThirdFloor, .clearNewsOffice:
             return
+        }
+
+        if destinationArea == .traffic3 {
+            hasExitedClearNewsLobbyElevator = true
         }
 
         completeTransition(
@@ -527,12 +551,28 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
 
     @discardableResult
     func beginClearNewsReceptionConversation() -> Bool {
-        guard isPlayerNearClearNewsElevatorForInteraction else {
+        guard isPlayerNearClearNewsReceptionForInteraction else {
             return false
         }
 
         playerNode.setMovementState(.idle)
         setCameraFocusMode(.clearNewsClerk)
+        updateWorldOffset()
+        return true
+    }
+
+    @discardableResult
+    func beginClearNewsElevatorInteraction() -> Bool {
+        guard isPlayerNearClearNewsElevatorForInteraction else {
+            return false
+        }
+        guard currentArea != .traffic3 || hasMetClearNewsReceptionist else {
+            return false
+        }
+
+        playerNode.setMovementState(.idle)
+        setClearNewsElevatorDoorOpen(true)
+        refreshRoomBounds()
         updateWorldOffset()
         return true
     }
@@ -546,11 +586,18 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         storedPlayerName = trimmedName
         hasMetClearNewsReceptionist = true
         setCameraFocusMode(.player)
-        if !hasEnteredClearNewsElevator {
-            setClearNewsElevatorDoorOpen(true)
-            refreshRoomBounds()
-        }
+        setClearNewsElevatorDoorOpen(true)
+        refreshRoomBounds()
         updateWorldOffset()
+    }
+
+    func completeClearNewsElevatorLobbyTransition() {
+        hasExitedClearNewsLobbyElevator = false
+        completeTransition(
+            to: .traffic3,
+            destinationPoint: GameConstants.clearNewsElevatorLayout.center,
+            heading: CGVector(dx: 0, dy: -1)
+        )
     }
 
     func completeClearNewsElevatorThirdFloorTransition() {
@@ -778,7 +825,7 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         trafficCars.removeAll()
         isClearNewsElevatorDoorOpenState = switch currentArea {
         case .traffic3:
-            hasMetClearNewsReceptionist && !hasEnteredClearNewsElevator
+            !hasExitedClearNewsLobbyElevator
         case .clearNewsThirdFloor:
             !hasExitedClearNewsThirdFloorElevator
         case .homestead, .traffic1, .traffic2, .clearNewsOffice:
@@ -2578,29 +2625,56 @@ final class GameScene: NSObject, SCNSceneRendererDelegate {
         case .traffic3:
             guard
                 hasMetClearNewsReceptionist,
-                !hasEnteredClearNewsElevator,
-                isClearNewsElevatorDoorOpenState,
+                isClearNewsElevatorDoorOpenState
+            else {
+                return
+            }
+
+            if
+                !hasExitedClearNewsLobbyElevator,
+                !clearNewsElevatorExitClearanceRect.contains(worldFocusPoint)
+            {
+                hasExitedClearNewsLobbyElevator = true
+                setClearNewsElevatorDoorOpen(false)
+                refreshRoomBounds()
+                return
+            }
+
+            guard
+                hasExitedClearNewsLobbyElevator,
                 clearNewsElevatorFullyEnteredRect.contains(worldFocusPoint)
             else {
                 return
             }
 
-            hasEnteredClearNewsElevator = true
             setClearNewsElevatorDoorOpen(false)
             refreshRoomBounds()
             onClearNewsElevatorSealed?()
         case .clearNewsThirdFloor:
-            guard
+            guard isClearNewsElevatorDoorOpenState else {
+                return
+            }
+
+            if
                 !hasExitedClearNewsThirdFloorElevator,
-                isClearNewsElevatorDoorOpenState,
                 !clearNewsElevatorExitClearanceRect.contains(worldFocusPoint)
+            {
+                hasExitedClearNewsThirdFloorElevator = true
+                setClearNewsElevatorDoorOpen(false)
+                refreshRoomBounds()
+                return
+            }
+
+            guard
+                hasExitedClearNewsThirdFloorElevator,
+                clearNewsElevatorFullyEnteredRect.contains(worldFocusPoint)
             else {
                 return
             }
 
-            hasExitedClearNewsThirdFloorElevator = true
             setClearNewsElevatorDoorOpen(false)
             refreshRoomBounds()
+            onClearNewsElevatorSealed?()
         case .homestead, .traffic1, .traffic2, .clearNewsOffice:
             return
         }

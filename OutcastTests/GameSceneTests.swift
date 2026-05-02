@@ -1070,6 +1070,58 @@ final class GameSceneTests: XCTestCase {
         XCTAssertEqual(gameScene.currentAreaIdentifier, "clearNewsThirdFloor")
     }
 
+    func testClearNewsThirdFloorElevatorCanBeReopenedAndSealedForReturnTrip() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+        let renderer = SCNRenderer(device: nil, options: nil)
+        renderer.scene = gameScene.scene
+        var sealCount = 0
+
+        gameScene.onClearNewsElevatorSealed = {
+            sealCount += 1
+        }
+
+        gameScene.spawn(at: .clearNews)
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+
+        let fullyClearOfDoorwayPoint = CGPoint(
+            x: GameConstants.clearNewsElevatorLayout.center.x,
+            y: GameConstants.clearNewsElevatorLayout.frontDoorRect.minY - GameConstants.playerRadius - 0.12
+        )
+        gameScene.setPlayerPosition(
+            fullyClearOfDoorwayPoint,
+            heading: CGVector(dx: 0, dy: -1)
+        )
+        advance(gameScene, renderer: renderer, frames: 0...1, input: .zero)
+
+        XCTAssertFalse(gameScene.isClearNewsElevatorDoorOpen)
+        XCTAssertTrue(gameScene.isPlayerNearClearNewsElevatorForInteraction)
+        XCTAssertTrue(gameScene.beginClearNewsElevatorInteraction())
+        XCTAssertTrue(gameScene.isClearNewsElevatorDoorOpen)
+
+        gameScene.setPlayerPosition(
+            GameConstants.clearNewsElevatorLayout.center,
+            heading: CGVector(dx: 0, dy: 1)
+        )
+        advance(gameScene, renderer: renderer, frames: 2...3, input: .zero)
+
+        XCTAssertFalse(gameScene.isClearNewsElevatorDoorOpen)
+        XCTAssertEqual(sealCount, 1)
+    }
+
+    func testClearNewsElevatorLobbyTransitionReturnsPlayerToLobbyElevator() {
+        let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
+
+        gameScene.spawn(at: .clearNews)
+        gameScene.completeClearNewsReceptionConversation(named: "Alex")
+        gameScene.completeClearNewsElevatorThirdFloorTransition()
+        gameScene.completeClearNewsElevatorLobbyTransition()
+
+        XCTAssertEqual(gameScene.currentAreaIdentifier, "traffic3")
+        XCTAssertTrue(gameScene.isPlayerInsideClearNewsElevator)
+        XCTAssertTrue(gameScene.isClearNewsElevatorDoorOpen)
+    }
+
     func testClearNewsThirdFloorPrinterBlocksPlayerMovement() {
         let gameScene = GameScene(size: CGSize(width: 1024, height: 768))
         let renderer = SCNRenderer(device: nil, options: nil)
